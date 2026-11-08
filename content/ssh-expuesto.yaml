@@ -1,0 +1,282 @@
+# Escenario: El SSH expuesto (Configurar · Hardening)
+# Todas las direcciones IP pertenecen a rangos reservados para documentación (RFC 5737).
+id: ssh-expuesto
+track: hardening
+tipo: configurar
+titulo: El SSH expuesto
+resumen: Endurece el acceso SSH de un servidor sin dejar afuera a quienes lo administran.
+contexto: >-
+  Una cooperativa ficticia tiene un servidor Linux con SSH abierto a internet.
+  Tres administradores entran desde sus casas y una de ellas está de viaje,
+  por lo que cambia de red en cada conexión. Durante una hora simulada, una
+  botnet prueba contraseñas desde cientos de direcciones y una persona
+  atacante intenta entrar con la contraseña filtrada de una administradora.
+duracion_segundos: 3600
+tags:
+  attack: [T1110, T1078]
+  csf: [PR.AA]
+
+usuarios_existentes: [root, ana, luis, marta]
+usuarios_permitidos: [ana, luis, marta]
+
+# Qué control habilita cada método de autenticación.
+metodos_aceptados:
+  login_clave: key_auth
+  login_password: password_auth
+
+# Cómo funciona el bloqueo por intentos fallidos (fail2ban).
+bloqueo_por_fallos:
+  max_intentos: fail2ban_maxretry
+  duracion_minutos: fail2ban_bantime
+  ventana_segundos: 600
+
+controles:
+  - id: permit_root_login
+    tipo: toggle
+    etiqueta: Permitir el acceso de root
+    ayuda: "Directiva PermitRootLogin. Con esta opción activa, la cuenta root puede iniciar sesión por SSH."
+    default: true
+    costo: 0
+  - id: password_auth
+    tipo: toggle
+    etiqueta: Permitir contraseñas
+    ayuda: "Directiva PasswordAuthentication. Si se desactiva, solo se acepta autenticación por clave pública."
+    default: true
+    costo: 0
+  - id: key_auth
+    tipo: toggle
+    etiqueta: Permitir claves públicas
+    ayuda: "Directiva PubkeyAuthentication. Requiere generar, distribuir y rotar las claves del equipo."
+    default: false
+    costo: 2
+  - id: allow_users
+    tipo: toggle
+    etiqueta: Limitar los usuarios que pueden usar SSH
+    ayuda: "Directiva AllowUsers. Solo las cuentas de la lista (ana, luis y marta) pueden entrar."
+    default: false
+    costo: 0
+  - id: fail2ban_maxretry
+    tipo: numero
+    etiqueta: Intentos fallidos antes de bloquear la IP
+    ayuda: "Parámetro maxretry de fail2ban. Con 0 el bloqueo automático está apagado. Un valor bajo frena la fuerza bruta, pero también castiga errores de las personas legítimas."
+    rango: [0, 20]
+    default: 0
+    unidad: intentos
+    costo: 2
+  - id: fail2ban_bantime
+    tipo: numero
+    etiqueta: Duración del bloqueo
+    ayuda: "Parámetro bantime de fail2ban. Mientras una IP está bloqueada, el servidor descarta todas sus conexiones."
+    rango: [1, 1440]
+    default: 10
+    unidad: minutos
+    costo: 0
+  - id: mfa
+    tipo: toggle
+    etiqueta: Exigir segundo factor (MFA)
+    ayuda: "Además de la credencial, se pide un código temporal. Cada administrador necesita configurar su aplicación."
+    default: false
+    costo: 3
+  - id: solo_vpn
+    tipo: toggle
+    etiqueta: Aceptar SSH solo desde la VPN
+    ayuda: "El puerto de SSH deja de ser visible desde internet. Hay que operar y mantener la VPN."
+    default: false
+    costo: 4
+  - id: alertas_login
+    tipo: toggle
+    etiqueta: Alertar por accesos sospechosos
+    ayuda: "Avisa al equipo cuando alguien entra con una credencial que no debería. No bloquea el acceso: lo detecta."
+    default: false
+    costo: 2
+
+actores:
+  - id: admin_ana
+    nombre: Ana, administradora de la oficina
+    descripcion: Se conecta siempre desde la red de la oficina. Su contraseña fue filtrada.
+    rol: legitimo
+    patron: sesiones
+    sesiones: 3
+    fallos_por_sesion: [0, 0]
+    metodos: [login_clave, login_password]
+    usuarios: [ana]
+    ips: { tipo: fija, valor: 198.51.100.10 }
+    via_vpn: true
+    segundo_factor: true
+  - id: admin_luis
+    nombre: Luis, administrador remoto
+    descripcion: Trabaja desde su casa y a veces se equivoca al escribir. Prefiere usar contraseña.
+    rol: legitimo
+    patron: sesiones
+    sesiones: 3
+    fallos_por_sesion: [0, 1]
+    metodos: [login_password, login_clave]
+    usuarios: [luis]
+    ips: { tipo: fija, valor: 198.51.100.20 }
+    via_vpn: true
+    segundo_factor: true
+  - id: admin_viajero
+    nombre: Marta, administradora de viaje
+    descripcion: Se conecta desde hoteles y aeropuertos, con una red distinta cada vez, y a veces falla un par de veces antes de entrar.
+    rol: legitimo
+    patron: sesiones
+    sesiones: 4
+    fallos_por_sesion: [1, 2]
+    metodos: [login_clave, login_password]
+    usuarios: [marta]
+    ips: { tipo: variable, cantidad: 4, rangos: [198.51.100.0/24] }
+    via_vpn: true
+    segundo_factor: true
+  - id: botnet
+    nombre: Botnet de fuerza bruta
+    descripcion: Cientos de direcciones que prueban contraseñas por ráfagas contra nombres de usuario comunes.
+    rol: atacante
+    patron: rafagas
+    intentos_por_ip: [3, 6]
+    metodos: [login_password]
+    usuarios: [root, admin, ubuntu, test, deploy]
+    credencial: adivinada
+    prob_exito: 0.01
+    ips:
+      tipo: variable
+      cantidad: 150
+      rangos: [192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24]
+    via_vpn: false
+    segundo_factor: false
+  - id: credencial_filtrada
+    nombre: Atacante con la contraseña filtrada de Ana
+    descripcion: Consiguió la contraseña de Ana en una filtración pública y la usa desde una sola dirección.
+    rol: atacante
+    patron: goteo
+    intentos: 3
+    metodos: [login_password]
+    usuarios: [ana]
+    credencial: valida
+    ips: { tipo: fija, valor: 203.0.113.77 }
+    via_vpn: false
+    segundo_factor: false
+
+# Se evalúa en orden: la primera regla que coincide decide el resultado.
+evaluacion:
+  - si: { ip_baneada: true }
+    resultado: bloqueado
+    explicacion: ip_baneada
+  - si: { solo_vpn: true, via_vpn: false }
+    resultado: bloqueado
+    explicacion: vpn_requerida
+  - si: { accion: login_password, password_auth: false }
+    resultado: bloqueado
+    explicacion: password_auth_off
+    cuenta_fallo: true
+  - si: { accion: login_clave, key_auth: false }
+    resultado: bloqueado
+    explicacion: key_auth_off
+    cuenta_fallo: true
+  - si: { usuario_existe: false }
+    resultado: bloqueado
+    explicacion: usuario_inexistente
+    cuenta_fallo: true
+  - si: { usuario: root, permit_root_login: false }
+    resultado: bloqueado
+    explicacion: root_login_off
+    cuenta_fallo: true
+  - si: { allow_users: true, usuario_permitido: false }
+    resultado: bloqueado
+    explicacion: usuario_no_permitido
+    cuenta_fallo: true
+  - si: { credencial: invalida }
+    resultado: bloqueado
+    explicacion: credencial_invalida
+    cuenta_fallo: true
+  - si: { mfa: true, segundo_factor: false }
+    resultado: bloqueado
+    explicacion: mfa_requerido
+    cuenta_fallo: true
+  - si: { rol: atacante, alertas_login: true }
+    resultado: detectado
+    explicacion: acceso_detectado
+  - si: { rol: atacante }
+    resultado: no_detectado
+    explicacion: acceso_no_detectado
+  - si: {}
+    resultado: permitido
+    explicacion: acceso_legitimo
+
+explicaciones:
+  ip_baneada:
+    titulo: IP bloqueada por fail2ban
+    texto: La dirección ya había superado el límite de intentos fallidos, así que el servidor descartó la conexión sin evaluar la credencial.
+    practica: Un bloqueo temporal frena la fuerza bruta desde una misma IP. Con límites muy bajos castiga también a las personas legítimas que se equivocan al escribir.
+    fuente: Documentación de fail2ban; MITRE ATT&CK T1110 (Brute Force)
+  vpn_requerida:
+    titulo: Acceso permitido solo desde la VPN
+    texto: La conexión no venía de la VPN y el servidor la rechazó antes de pedir ninguna credencial.
+    practica: Exponer SSH únicamente a través de una VPN reduce mucho la superficie de ataque, a cambio de operar y mantener la VPN.
+    fuente: NIST SP 800-123 (Guide to General Server Security); NIST CSF 2.0, función Proteger
+  password_auth_off:
+    titulo: Contraseñas deshabilitadas
+    texto: El servidor no acepta contraseñas, así que el intento terminó sin comprobar si la contraseña era correcta.
+    practica: Desactivar PasswordAuthentication y exigir claves públicas elimina la fuerza bruta de contraseñas y el uso de credenciales filtradas.
+    fuente: sshd_config(5) de OpenSSH; CIS Benchmarks (sección de configuración de SSH); NIST SP 800-63B
+  key_auth_off:
+    titulo: Claves públicas deshabilitadas
+    texto: La persona intentó entrar con su clave, pero el servidor no tiene habilitada la autenticación por clave pública.
+    practica: Antes de desactivar las contraseñas hay que habilitar y distribuir las claves. Si no, el equipo se queda sin acceso.
+    fuente: sshd_config(5) de OpenSSH
+  usuario_inexistente:
+    titulo: Usuario inexistente
+    texto: La cuenta que se intentó usar no existe en el servidor.
+    practica: Los bots prueban nombres comunes como admin, ubuntu o test. Si no existen, el intento falla y queda en los registros.
+    fuente: MITRE ATT&CK T1110.001 (Password Guessing)
+  root_login_off:
+    titulo: Acceso de root deshabilitado
+    texto: El servidor rechazó el inicio de sesión directo como root.
+    practica: Entrar con una cuenta personal y escalar privilegios con sudo deja trazabilidad y quita el objetivo más probado por los atacantes.
+    fuente: CIS Benchmarks (sección de configuración de SSH); sshd_config(5) de OpenSSH
+  usuario_no_permitido:
+    titulo: Usuario fuera de la lista permitida
+    texto: La cuenta no figura entre los usuarios autorizados a usar SSH.
+    practica: Limitar SSH a las cuentas que de verdad lo necesitan reduce los nombres que un atacante puede probar.
+    fuente: sshd_config(5) de OpenSSH; NIST CSF 2.0 PR.AA
+  credencial_invalida:
+    titulo: Credencial incorrecta
+    texto: El servidor evaluó la credencial y era incorrecta, ya fuera por un error al escribir, una clave equivocada o una contraseña adivinada mal.
+    practica: Cada fallo queda registrado. Esos registros son la señal con la que fail2ban o un SIEM detectan la fuerza bruta.
+    fuente: MITRE ATT&CK T1110 (Brute Force); NIST SP 800-92 (Guide to Computer Security Log Management)
+  mfa_requerido:
+    titulo: Falta el segundo factor
+    texto: La credencial era válida, pero quien se conectó no tenía el segundo factor.
+    practica: El segundo factor hace que una contraseña filtrada no alcance por sí sola para entrar.
+    fuente: NIST SP 800-63B; NIST CSF 2.0 PR.AA
+  acceso_detectado:
+    titulo: Acceso no autorizado detectado
+    texto: El atacante entró con una credencial válida, pero la alerta de acceso sospechoso avisó al equipo.
+    practica: Detectar no reemplaza a bloquear, pero acorta el tiempo de respuesta y limita el daño.
+    fuente: NIST CSF 2.0, función Detectar; MITRE ATT&CK T1078 (Valid Accounts)
+  acceso_no_detectado:
+    titulo: Acceso no autorizado sin detectar
+    texto: El atacante entró con una credencial válida y nada en el servidor generó una alerta.
+    practica: Una credencial filtrada se confunde con un acceso legítimo si no hay segundo factor, restricción de origen ni alertas.
+    fuente: MITRE ATT&CK T1078 (Valid Accounts)
+  acceso_legitimo:
+    titulo: Acceso legítimo permitido
+    texto: La persona pudo conectarse y trabajar con normalidad.
+    practica: Un buen control frena al atacante sin interrumpir el trabajo del equipo.
+    fuente: NIST CSF 2.0 PR.AA
+
+pesos:
+  seguridad: 0.5
+  operatividad: 0.35
+  costo: 0.15
+
+# Configuración recomendada: la más barata que frena a ambos atacantes sin romper el trabajo del equipo.
+optimo:
+  permit_root_login: false
+  password_auth: false
+  key_auth: true
+  allow_users: true
+  fail2ban_maxretry: 0
+  fail2ban_bantime: 10
+  mfa: false
+  solo_vpn: false
+  alertas_login: false

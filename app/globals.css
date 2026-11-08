@@ -22,5 +22,50 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900;
+  }
+
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-sky-700 text-white hover:bg-sky-800 dark:bg-sky-600 dark:hover:bg-sky-500;
+  }
+
+  .btn-secondary {
+    @apply border border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800;
+  }
+
+  .field {
+    @apply min-h-11 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100;
+  }
+}
+
+/* Timeline rows fade in one after another; skipped for people who prefer less motion. */
+@keyframes fx-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fx-enter {
+  animation: fx-enter 320ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-enter {
+    animation: none;
+  }
 }

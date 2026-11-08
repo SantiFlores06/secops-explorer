@@ -1,4 +1,4 @@
-import type { Config, ControlDef, Scenario } from "./types";
+import type { Config, ControlDef, ControlValue, Scenario } from "./types";
 
 export function defaultConfig(scenario: Scenario): Config {
   const config: Config = {};
@@ -8,9 +8,14 @@ export function defaultConfig(scenario: Scenario): Config {
   return config;
 }
 
-function normalizeControl(control: ControlDef, raw: unknown): boolean | number {
+function normalizeControl(control: ControlDef, raw: unknown): ControlValue {
   if (control.kind === "toggle") {
     return typeof raw === "boolean" ? raw : control.defaultValue;
+  }
+  if (control.kind === "enum") {
+    return typeof raw === "string" && control.options.some((option) => option.value === raw)
+      ? raw
+      : control.defaultValue;
   }
   if (typeof raw !== "number" || !Number.isFinite(raw)) {
     return control.defaultValue;

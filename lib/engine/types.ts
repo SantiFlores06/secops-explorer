@@ -8,10 +8,11 @@
 
 export type Outcome = "permitido" | "bloqueado" | "detectado" | "no_detectado";
 export type Role = "legitimo" | "atacante";
-export type AuthAction = "login_clave" | "login_password";
+/** What an actor tries: log in (SSH scenario) or send a message (DMARC scenario). */
+export type AuthAction = "login_clave" | "login_password" | "enviar_correo";
 export type Credential = "valida" | "invalida";
 
-export type ControlValue = boolean | number;
+export type ControlValue = boolean | number | string;
 export type Config = Record<string, ControlValue>;
 
 export interface ToggleControl {
@@ -37,7 +38,23 @@ export interface NumberControl {
   cost: number;
 }
 
-export type ControlDef = ToggleControl | NumberControl;
+export interface EnumOption {
+  value: string;
+  label: string;
+  /** Maintenance cost units charged while this option is selected. */
+  cost: number;
+}
+
+export interface EnumControl {
+  id: string;
+  kind: "enum";
+  label: string;
+  help: string;
+  options: EnumOption[];
+  defaultValue: string;
+}
+
+export type ControlDef = ToggleControl | NumberControl | EnumControl;
 
 export type IpSpec =
   | { kind: "fixed"; address: string }
@@ -55,12 +72,24 @@ export type CredentialModel =
   | { kind: "valid" }
   | { kind: "guessed"; successProbability: number };
 
+/** How a message is authenticated. Values come from scenario data (Spanish). */
+export interface MailProfile {
+  /** Domain shown in the From header. */
+  fromDomain: string;
+  /** "propio": our SPF authorizes the sender. "tercero": a third party's SPF passes for its own domain. "ninguno": not authorized. */
+  spf: "propio" | "tercero" | "ninguno";
+  /** "propia": we sign. "delegada": a provider signs with a delegated subdomain. "tercero": own key. "ninguna": unsigned. */
+  signing: "propia" | "delegada" | "tercero" | "ninguna";
+  /** Domain in the DKIM d= tag, or null when unsigned. */
+  signingDomain: string | null;
+}
+
 export interface Actor {
   id: string;
   name: string;
   description: string;
   role: Role;
-  /** Authentication methods the actor can use, in order of preference. */
+  /** Actions the actor can use, in order of preference. */
   methods: AuthAction[];
   users: string[];
   credential: CredentialModel;
@@ -68,6 +97,8 @@ export interface Actor {
   behavior: Behavior;
   viaVpn: boolean;
   hasSecondFactor: boolean;
+  /** Present only for actors that send mail. */
+  mail?: MailProfile;
 }
 
 export type FactValue = boolean | number | string;
@@ -113,6 +144,8 @@ export interface Scenario {
   tags: { attack: string[]; csf: string[] };
   existingUsers: string[];
   allowedUsers: string[];
+  /** Mail only: the domain whose DMARC policy the player configures. */
+  protectedDomain?: string;
   /** Maps an auth action to the toggle control that enables it. */
   acceptedMethods: Partial<Record<AuthAction, string>>;
   failureLockout?: FailureLockout;
@@ -135,6 +168,8 @@ export interface Attempt {
   credential: Credential;
   viaVpn: boolean;
   hasSecondFactor: boolean;
+  /** Mail only: 0-99, fixed per message by the seed. Below the pct control, DMARC policy applies. */
+  roll?: number;
 }
 
 export interface SimEvent {

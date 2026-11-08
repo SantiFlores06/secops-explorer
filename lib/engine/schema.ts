@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isDocumentationIp, isDocumentationRange } from "./ips";
+import { MAIL_FACTS } from "./mail";
 import type {
   Actor,
   Behavior,
@@ -7,6 +8,7 @@ import type {
   CredentialModel,
   Explanation,
   IpSpec,
+  MailProfile,
   Rule,
   Scenario,
 } from "./types";
@@ -38,10 +40,14 @@ const id = z
   .regex(/^[a-z][a-z0-9_-]*$/, "debe usar minúsculas, números, guiones y guiones bajos");
 const text = z.string().min(1, "no puede estar vacío");
 const outcome = z.enum(["permitido", "bloqueado", "detectado", "no_detectado"]);
-const authAction = z.enum(["login_clave", "login_password"]);
+const authAction = z.enum(["login_clave", "login_password", "enviar_correo"]);
 const integerPair = z
   .tuple([z.number().int().min(0), z.number().int().min(0)])
   .refine(([min, max]) => min <= max, "el mínimo no puede superar al máximo");
+/** Mail domains must be RFC 2606 reserved names, so no scenario can point at a real domain. */
+const reservedMailDomain = z
+  .string()
+  .regex(/^(?:[a-z0-9-]+\.)*example\.(?:com|net|org)$/, "debe usar example.com, example.net o example.org (RFC 2606)");
 
 const toggleControl = z.strictObject({
   id,
@@ -68,7 +74,38 @@ const numberControl = z
     path: ["default"],
   });
 
-const control = z.discriminatedUnion("tipo", [toggleControl, numberControl]);
+const enumOption = z.strictObject({
+  valor: id,
+  etiqueta: text,
+  costo: z.number().min(0).default(0),
+});
+
+const enumControl = z
+  .strictObject({
+    id,
+    tipo: z.literal("opcion"),
+    etiqueta: text,
+    ayuda: text,
+    opciones: z.array(enumOption).min(2),
+    default: id,
+  })
+  .refine(
+    ({ opciones }) => new Set(opciones.map((option) => option.valor)).size === opciones.length,
+    { message: "las opciones no pueden repetirse", path: ["opciones"] },
+  )
+  .refine(({ opciones, default: value }) => opciones.some((option) => option.valor === value), {
+    message: "el valor por defecto debe ser una de las opciones",
+    path: ["default"],
+  });
+
+const control = z.discriminatedUnion("tipo", [toggleControl, numberControl, enumControl]);
+
+const mailProfile = z.strictObject({
+  dominio: reservedMailDomain,
+  spf: z.enum(["propio", "tercero", "ninguno"]),
+  firma: z.enum(["propia", "delegada", "tercero", "ninguna"]),
+  dominio_firma: reservedMailDomain.optional(),
+});
 
 const ips = z.discriminatedUnion("tipo", [
   z.strictObject({
@@ -96,6 +133,7 @@ const actorBase = {
   ips,
   via_vpn: z.boolean(),
   segundo_factor: z.boolean(),
+  correo: mailProfile.optional(),
 };
 
 const actor = z
@@ -150,6 +188,7 @@ const rawScenario = z.strictObject({
   }),
   usuarios_existentes: z.array(text).min(1),
   usuarios_permitidos: z.array(text),
+  dominio_protegido: reservedMailDomain.optional(),
   metodos_aceptados: z.strictObject({
     login_clave: id.optional(),
     login_password: id.optional(),
@@ -170,7 +209,7 @@ const rawScenario = z.strictObject({
     operatividad: z.number().min(0),
     costo: z.number().min(0),
   }),
-  optimo: z.record(z.string(), z.union([z.boolean(), z.number()])),
+  optimo: z.record(z.string(), z.union([z.boolean(), z.number(), z.string()])),
 });
 
 type RawScenario = z.output<typeof rawScenario>;
@@ -216,7 +255,7 @@ const validated = rawScenario.superRefine((data, ctx) => {
     }
   }
 
-  const knownFacts = new Set<string>([...BUILTIN_FACTS, ...controlIds]);
+  const knownFacts = new Set<string>([...BUILTIN_FACTS, ...MAIL_FACTS, ...controlIds]);
   data.evaluacion.forEach((item, index) => {
     for (const key of Object.keys(item.si)) {
       if (!knownFacts.has(key)) {
@@ -241,6 +280,14 @@ const validated = rawScenario.superRefine((data, ctx) => {
   const fixedIps: string[] = [];
   data.actores.forEach((item, index) => {
     if (item.ips.tipo === "fija") fixedIps.push(item.ips.valor);
+    if (item.correo) {
+      if (!data.dominio_protegido) {
+        fail("los actores con correo requieren dominio_protegido", ["dominio_protegido"]);
+      }
+      if (item.correo.firma === "delegada" && !item.correo.dominio_firma) {
+        fail("una firma delegada requiere dominio_firma", ["actores", index, "correo"]);
+      }
+    }
     if (item.rol === "legitimo") {
       for (const user of item.usuarios) {
         if (!data.usuarios_existentes.includes(user)) {
@@ -265,6 +312,8 @@ const validated = rawScenario.superRefine((data, ctx) => {
       (typeof value !== "number" || value < def.rango[0] || value > def.rango[1])
     ) {
       fail("el valor óptimo debe estar dentro del rango del control", ["optimo", controlId]);
+    } else if (def.tipo === "opcion" && !def.opciones.some((option) => option.valor === value)) {
+      fail("el valor óptimo debe ser una de las opciones del control", ["optimo", controlId]);
     }
   }
   for (const controlId of controlIds) {
@@ -288,6 +337,20 @@ function toControl(raw: RawControl): ControlDef {
       cost: raw.costo,
     };
   }
+  if (raw.tipo === "opcion") {
+    return {
+      id: raw.id,
+      kind: "enum",
+      label: raw.etiqueta,
+      help: raw.ayuda,
+      options: raw.opciones.map((option) => ({
+        value: option.valor,
+        label: option.etiqueta,
+        cost: option.costo,
+      })),
+      defaultValue: raw.default,
+    };
+  }
   return {
     id: raw.id,
     kind: "number",
@@ -299,6 +362,16 @@ function toControl(raw: RawControl): ControlDef {
     unit: raw.unidad,
     cost: raw.costo,
   };
+}
+
+function toMail(raw: NonNullable<RawActor["correo"]>): MailProfile {
+  const signingDomain =
+    raw.firma === "ninguna"
+      ? null
+      : raw.firma === "delegada"
+        ? (raw.dominio_firma ?? null)
+        : raw.dominio;
+  return { fromDomain: raw.dominio, spf: raw.spf, signing: raw.firma, signingDomain };
 }
 
 function toActor(raw: RawActor): Actor {
@@ -331,6 +404,7 @@ function toActor(raw: RawActor): Actor {
     behavior,
     viaVpn: raw.via_vpn,
     hasSecondFactor: raw.segundo_factor,
+    ...(raw.correo ? { mail: toMail(raw.correo) } : {}),
   };
 }
 
@@ -371,6 +445,7 @@ function toScenario(raw: RawScenario): Scenario {
     tags: raw.tags,
     existingUsers: raw.usuarios_existentes,
     allowedUsers: raw.usuarios_permitidos,
+    protectedDomain: raw.dominio_protegido,
     acceptedMethods,
     failureLockout: raw.bloqueo_por_fallos && {
       maxAttemptsControl: raw.bloqueo_por_fallos.max_intentos,

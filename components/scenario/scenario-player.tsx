@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { compareWithOptimal } from "@/lib/engine/compare";
 import { defaultConfig } from "@/lib/engine/config";
 import { DEFAULT_SEED, decodeShare, encodeShare, nextSeed, type DecodedShare } from "@/lib/engine/share";
-import type { Config, Scenario } from "@/lib/engine/types";
+import type { Config, ControlValue, Scenario } from "@/lib/engine/types";
 import ControlPanel from "./control-panel";
 import ResultsView from "./results-view";
 
@@ -41,7 +41,7 @@ function Player({ scenario, initial }: { scenario: Scenario; initial: DecodedSha
     [scenario, run],
   );
 
-  function updateControl(controlId: string, value: boolean | number) {
+  function updateControl(controlId: string, value: ControlValue) {
     setConfig((current) => ({ ...current, [controlId]: value }));
     setCopyState("idle");
   }

@@ -13,14 +13,24 @@ function costUnits(scenario: Scenario, config: Config): number {
   let total = 0;
   for (const control of scenario.controls) {
     const value = config[control.id];
-    const active = control.kind === "toggle" ? value === true : Number(value) > 0;
-    if (active) total += control.cost;
+    if (control.kind === "enum") {
+      total += control.options.find((option) => option.value === value)?.cost ?? 0;
+    } else if (control.kind === "toggle" ? value === true : Number(value) > 0) {
+      total += control.cost;
+    }
   }
   return total;
 }
 
 function maxCostUnits(scenario: Scenario): number {
-  return scenario.controls.reduce((sum, control) => sum + control.cost, 0);
+  return scenario.controls.reduce(
+    (sum, control) =>
+      sum +
+      (control.kind === "enum"
+        ? Math.max(0, ...control.options.map((option) => option.cost))
+        : control.cost),
+    0,
+  );
 }
 
 function summarizeAttackers(scenario: Scenario, events: SimEvent[]): AttackerSummary[] {

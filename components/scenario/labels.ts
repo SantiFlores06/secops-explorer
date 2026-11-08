@@ -10,6 +10,7 @@ export const OUTCOME_LABEL: Record<Outcome, string> = {
 export const ACTION_LABEL: Record<AuthAction, string> = {
   login_clave: "clave pública",
   login_password: "contraseña",
+  enviar_correo: "correo",
 };
 
 export const ROLE_LABEL: Record<Role, string> = {

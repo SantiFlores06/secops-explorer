@@ -133,6 +133,9 @@ function formatValue(scenario: Scenario, controlId: string, value: ControlValue)
     if (value === 0 && control.id.endsWith("maxretry")) return "0 (apagado)";
     return control.unit ? `${value} ${control.unit}` : String(value);
   }
+  if (control?.kind === "enum") {
+    return control.options.find((option) => option.value === value)?.label ?? String(value);
+  }
   return value ? "activado" : "desactivado";
 }
 
@@ -184,7 +187,20 @@ function clockLabel(row: TimelineRow): string {
     : `${formatClock(row.tStart)}–${formatClock(row.tEnd)}`;
 }
 
+function describeMailRow(row: TimelineRow): string {
+  const received = row.outcome !== "bloqueado";
+  const verb = received ? "recibido" : "rechazado";
+  if (row.count === 1) {
+    const sender = row.user ? ` con remitente «${row.user}»` : "";
+    return `Mensaje ${verb}${sender} desde ${row.ip}.`;
+  }
+  const origin =
+    row.ipCount === 1 ? `desde ${row.ip}` : `desde ${row.ipCount} direcciones distintas`;
+  return `${row.count} mensajes ${received ? "recibidos" : "rechazados"} ${origin}.`;
+}
+
 function describeRow(row: TimelineRow): string {
+  if (row.action === "enviar_correo") return describeMailRow(row);
   const method = ACTION_LABEL[row.action];
   const entered = row.outcome !== "bloqueado";
   let text: string;

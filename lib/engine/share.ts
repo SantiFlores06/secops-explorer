@@ -46,6 +46,9 @@ export function decodeShare(
     if (control.kind === "toggle") {
       if (raw === "1") partial[control.id] = true;
       else if (raw === "0") partial[control.id] = false;
+    } else if (control.kind === "enum") {
+      // normalizeConfig rejects values outside the control's options.
+      partial[control.id] = raw;
     } else if (raw.trim() !== "") {
       const value = Number(raw);
       if (Number.isFinite(value)) partial[control.id] = value;

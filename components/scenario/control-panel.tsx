@@ -1,35 +1,55 @@
 "use client";
 
 import { useState } from "react";
-import type { Config, ControlDef, NumberControl, ToggleControl } from "@/lib/engine/types";
+import type {
+  Config,
+  ControlDef,
+  ControlValue,
+  EnumControl,
+  NumberControl,
+  ToggleControl,
+} from "@/lib/engine/types";
 
 interface ControlPanelProps {
   controls: ControlDef[];
   config: Config;
-  onChange: (controlId: string, value: boolean | number) => void;
+  onChange: (controlId: string, value: ControlValue) => void;
 }
 
 export default function ControlPanel({ controls, config, onChange }: ControlPanelProps) {
   return (
     <fieldset className="flex flex-col gap-5">
       <legend className="mb-3 text-lg font-semibold">Configuración del servidor</legend>
-      {controls.map((control) =>
-        control.kind === "toggle" ? (
-          <ToggleField
-            key={control.id}
-            control={control}
-            value={config[control.id] === true}
-            onChange={(value) => onChange(control.id, value)}
-          />
-        ) : (
+      {controls.map((control) => {
+        if (control.kind === "toggle") {
+          return (
+            <ToggleField
+              key={control.id}
+              control={control}
+              value={config[control.id] === true}
+              onChange={(value) => onChange(control.id, value)}
+            />
+          );
+        }
+        if (control.kind === "enum") {
+          return (
+            <EnumField
+              key={control.id}
+              control={control}
+              value={String(config[control.id])}
+              onChange={(value) => onChange(control.id, value)}
+            />
+          );
+        }
+        return (
           <NumberField
             key={control.id}
             control={control}
             value={Number(config[control.id])}
             onChange={(value) => onChange(control.id, value)}
           />
-        ),
-      )}
+        );
+      })}
     </fieldset>
   );
 }
@@ -118,6 +138,43 @@ function NumberField({
       </div>
       <p id={helpId} className="mt-1 text-sm leading-5 text-zinc-600 dark:text-zinc-400">
         {control.help} Valores de {control.min} a {control.max}.
+      </p>
+    </div>
+  );
+}
+
+function EnumField({
+  control,
+  value,
+  onChange,
+}: {
+  control: EnumControl;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const selectId = `${control.id}-campo`;
+  const helpId = `${control.id}-ayuda`;
+
+  return (
+    <div>
+      <label htmlFor={selectId} className="font-medium">
+        {control.label}
+      </label>
+      <select
+        id={selectId}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-describedby={helpId}
+        className="field mt-1 w-full"
+      >
+        {control.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <p id={helpId} className="mt-1 text-sm leading-5 text-zinc-600 dark:text-zinc-400">
+        {control.help}
       </p>
     </div>
   );

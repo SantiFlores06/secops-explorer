@@ -24,7 +24,10 @@ Save tokens. Talk short.
 
 ## Hard rules (ALL agents)
 
-- NO commit, NO push. Human commits, own name, conventional msg, no AI trailer.
+- Subagents: NO commit, NO push. Only orchestrator commits + pushes.
+- Commit ratio: max 2 orchestrator commits, then stop till human makes 1. Human commit resets count.
+- Orchestrator commits: author `Claude <noreply@anthropic.com>`. Human commits: own name. Ratio countable from `git log`.
+- All commits: conventional msg, no AI trailer.
 - NO touch `.github/`, Vercel config. Human owns. Need change? Report snippet.
 - NO `npm audit fix --force`.
 - NO `Math.random`, `Date.now`, `new Date()` in `lib/engine/`. Use seeded rng (mulberry32).
@@ -77,4 +80,4 @@ Report: bugs found, bugs fixed, still open, coverage gaps. Caveman.
 
 ## Handoff
 
-builder -> qa -> human. Human reviews diff, commits. Next slice only after human ok.
+builder -> qa -> orchestrator commits (ratio rule) -> human reviews. Next slice only after human ok.

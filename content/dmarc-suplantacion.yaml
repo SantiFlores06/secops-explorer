@@ -10,11 +10,10 @@ contexto: >-
   Una cooperativa ficticia recibe mails falsos de su "gerente" pidiendo
   transferencias urgentes. Su correo sale de sus propios servidores y el
   área de marketing envía las novedades desde un proveedor externo. Durante
-  una hora simulada llegan suplantaciones desde un servidor cualquiera y
-  desde un dominio parecido al de la cooperativa, que no es suyo.
+  una hora simulada llegan suplantaciones desde un servidor cualquiera.
 duracion_segundos: 3600
 tags:
-  attack: [T1566, T1656, T1583.001]
+  attack: [T1566, T1656]
   csf: [PR.PS, DE.CM]
 
 usuarios_existentes: [nomina@example.com, facturacion@example.com, novedades@example.com, gerencia@example.com]
@@ -24,51 +23,45 @@ dominio_protegido: example.com
 # Sin inicio de sesión: estas claves no aplican al correo.
 metodos_aceptados: {}
 
+# DMARC pasa si SPF o DKIM autorizan al remitente para el dominio.
 controles:
-  - id: politica
+  - id: spf
+    tipo: opcion
+    etiqueta: Registro SPF
+    ayuda: 'Lista los servidores autorizados a enviar en nombre de tu dominio. Con "none" no hay registro y tus propios servidores dejan de pasar SPF. Con "tus servidores y el proveedor" también autorizas al proveedor de novedades.'
+    opciones:
+      - { valor: none, etiqueta: "none (sin registro)", costo: 0 }
+      - { valor: sin_proveedor, etiqueta: "solo tus servidores", costo: 0 }
+      - { valor: con_proveedor, etiqueta: "tus servidores y el proveedor", costo: 1 }
+    default: sin_proveedor
+  - id: dkim
+    tipo: toggle
+    etiqueta: Firmar con DKIM
+    ayuda: 'Tus servidores firman cada mail con una clave publicada en DNS. DKIM solo cubre tus propios servidores: nunca autoriza al proveedor externo.'
+    default: false
+    costo: 0
+  - id: dmarc
     tipo: opcion
     etiqueta: Política DMARC
-    ayuda: 'none solo observa, quarantine envía a spam y reject descarta lo que no pasa la alineación. Subirla sin revisar los reportes corta correo legítimo.'
+    ayuda: 'none solo observa, quarantine envía a spam y reject descarta los mensajes que fallan. Subirla sin revisar los reportes corta correo legítimo.'
     opciones:
       - { valor: none, etiqueta: "none (solo observar)", costo: 0 }
       - { valor: quarantine, etiqueta: "quarantine (enviar a spam)", costo: 1 }
       - { valor: reject, etiqueta: "reject (descartar)", costo: 2 }
     default: none
-  - id: pct
-    tipo: numero
-    etiqueta: Mensajes sometidos a la política
-    ayuda: 'Porcentaje de los mensajes que fallan DMARC a los que se aplica la política (pct). Con menos de 100 se despliega de a poco.'
-    rango: [0, 100]
-    default: 100
-    unidad: "%"
-  - id: spf
+  - id: reportes
     tipo: opcion
-    etiqueta: Registro SPF
-    ayuda: 'Lista los servidores autorizados a enviar en nombre de tu dominio. Con "off" no hay registro y SPF nunca se alinea.'
+    etiqueta: Destino de reportes DMARC
+    ayuda: 'Dónde llegan los reportes de quién envía en nombre de tu dominio. Sin buzón nadie ve los fallos que la política no bloquea.'
     opciones:
-      - { valor: "off", etiqueta: "off (sin registro)", costo: 0 }
-      - { valor: softfail, etiqueta: "softfail (~all)", costo: 0 }
-      - { valor: hardfail, etiqueta: "hardfail (-all)", costo: 1 }
-    default: softfail
-  - id: dkim
-    tipo: toggle
-    etiqueta: Firmar con DKIM
-    ayuda: 'La empresa firma sus correos con una clave publicada en DNS. También hace falta para que el proveedor firme con un subdominio delegado.'
-    default: false
-    costo: 2
-  - id: alineacion
-    tipo: opcion
-    etiqueta: Alineación
-    ayuda: 'relaxed acepta subdominios del mismo dominio organizacional. strict exige coincidencia exacta con el remitente visible.'
-    opciones:
-      - { valor: relaxed, etiqueta: "relaxed (relajada)", costo: 0 }
-      - { valor: strict, etiqueta: "strict (estricta)", costo: 1 }
-    default: relaxed
+      - { valor: none, etiqueta: "none (sin reportes)", costo: 0 }
+      - { valor: buzon, etiqueta: "buzón de reportes", costo: 0 }
+    default: none
 
 actores:
   - id: correo_empresa
     nombre: Correo de la empresa
-    descripcion: Nómina y facturación envían desde los servidores propios de la cooperativa, con su SPF y su firma DKIM.
+    descripcion: Nómina y facturación envían desde los servidores propios de la cooperativa.
     rol: legitimo
     patron: goteo
     intentos: 18
@@ -77,10 +70,10 @@ actores:
     ips: { tipo: fija, valor: 198.51.100.25 }
     via_vpn: false
     segundo_factor: false
-    correo: { dominio: example.com, spf: propio, firma: propia }
+    correo: { dominio: example.com, servidor: propio }
   - id: newsletter
     nombre: Newsletter del proveedor externo
-    descripcion: Marketing envía las novedades desde un proveedor que firma con el subdominio news.example.com, delegado por la empresa.
+    descripcion: Marketing envía las novedades desde los servidores de un proveedor externo, que no es parte de la cooperativa.
     rol: legitimo
     patron: goteo
     intentos: 4
@@ -89,10 +82,10 @@ actores:
     ips: { tipo: fija, valor: 198.51.100.40 }
     via_vpn: false
     segundo_factor: false
-    correo: { dominio: example.com, spf: tercero, firma: delegada, dominio_firma: news.example.com }
+    correo: { dominio: example.com, servidor: proveedor }
   - id: suplantacion_gerente
     nombre: Estafador que suplanta al gerente
-    descripcion: Envía desde su propio servidor poniendo la dirección del gerente en el campo De. Nunca tiene una firma válida para el dominio.
+    descripcion: Envía desde su propio servidor poniendo la dirección del gerente en el campo De. Ningún control de tu dominio lo autoriza.
     rol: atacante
     patron: goteo
     intentos: 6
@@ -104,31 +97,19 @@ actores:
     ips: { tipo: fija, valor: 203.0.113.50 }
     via_vpn: false
     segundo_factor: false
-    correo: { dominio: example.com, spf: ninguno, firma: ninguna }
-  - id: dominio_parecido
-    nombre: Phishing desde un dominio parecido
-    descripcion: Usa example.net, un dominio que no es de la cooperativa, con SPF y DKIM bien configurados para él.
-    rol: atacante
-    patron: goteo
-    intentos: 6
-    metodos: [enviar_correo]
-    usuarios: [gerencia@example.net]
-    ips: { tipo: fija, valor: 192.0.2.66 }
-    via_vpn: false
-    segundo_factor: false
-    correo: { dominio: example.net, spf: tercero, firma: tercero }
+    correo: { dominio: example.com, servidor: ajeno }
 
 # Se evalúa en orden: la primera regla que coincide decide el resultado.
 evaluacion:
-  - si: { rol: atacante, dominio_protegido: false }
-    resultado: no_detectado
-    explicacion: dominio_ajeno
   - si: { rol: atacante, dmarc_accion: rechazar }
     resultado: bloqueado
     explicacion: dmarc_rechazo
   - si: { rol: atacante, dmarc_accion: cuarentena }
     resultado: detectado
     explicacion: dmarc_cuarentena
+  - si: { rol: atacante, dmarc_resultado: fail, reportes: buzon }
+    resultado: detectado
+    explicacion: dmarc_reportado
   - si: { rol: atacante }
     resultado: no_detectado
     explicacion: dmarc_sin_aplicar
@@ -138,6 +119,9 @@ evaluacion:
   - si: { rol: legitimo, dmarc_accion: cuarentena }
     resultado: bloqueado
     explicacion: dmarc_cuarentena_legitimo
+  - si: { rol: legitimo, dmarc_resultado: fail, reportes: buzon }
+    resultado: permitido
+    explicacion: dmarc_fallo_reportado
   - si: { rol: legitimo, dmarc_resultado: fail }
     resultado: permitido
     explicacion: dmarc_fallo_tolerado
@@ -146,56 +130,60 @@ evaluacion:
     explicacion: correo_autenticado
 
 explicaciones:
-  dominio_ajeno:
-    titulo: Dominio que no es el tuyo
-    texto: "El mensaje dice venir de example.net, un dominio que no controlas. DMARC solo protege el dominio que publica su política, así que no tiene nada con qué compararlo."
-    practica: "DMARC frena la suplantación de tu propio dominio. Frente a dominios parecidos ayudan la concientización del equipo, los filtros de similitud y registrar las variantes de tu dominio, pero no DMARC."
-    fuente: "RFC 7489 (DMARC); MITRE ATT&CK T1583.001 (Acquire Infrastructure: Domains)"
   dmarc_rechazo:
-    titulo: Suplantación rechazada por DMARC
-    texto: "El mensaje decía venir de tu dominio, pero ni SPF ni DKIM quedaron alineados con él, y la política dice reject."
-    practica: "reject le indica al receptor que descarte lo que falla la alineación. Conviene llegar aquí solo después de revisar los reportes de tus remitentes legítimos."
+    titulo: Suplantación descartada por DMARC
+    texto: "El mensaje decía venir de tu dominio, pero ni SPF ni DKIM lo autorizaban para tu dominio, y la política reject lo descartó."
+    practica: "reject descarta todo lo que no pasa. Conviene llegar aquí solo después de revisar los reportes de tus remitentes legítimos."
     fuente: "RFC 7489 (DMARC)"
   dmarc_cuarentena:
     titulo: Suplantación enviada a spam
     texto: "El mensaje falló DMARC y la política quarantine lo mandó a la carpeta de spam. Llegó, pero marcado."
     practica: "quarantine reduce el daño mientras confirmas que todos tus remitentes legítimos pasan. Es el paso intermedio antes de reject."
     fuente: "RFC 7489 (DMARC)"
+  dmarc_reportado:
+    titulo: Suplantación entregada y reportada
+    texto: "DMARC falló, pero la política none solo observa: el mensaje llegó a la bandeja de entrada. Como tenés un buzón de reportes, el fallo queda registrado."
+    practica: "Un fallo que llega a un buzón de reportes ya no es invisible. Sirve para decidir cuándo subir la política."
+    fuente: "RFC 7489 (DMARC); NIST CSF 2.0, función Detectar"
   dmarc_sin_aplicar:
-    titulo: Suplantación entregada
-    texto: "DMARC falló, pero la política no se aplicó a este mensaje: es none, o el porcentaje lo dejó afuera. El mensaje llegó a la bandeja de entrada."
-    practica: "none sirve para empezar: publica la política, revisa los reportes y endurécela de a poco. Un fallo que nadie ve sigue siendo un fallo."
+    titulo: Suplantación entregada sin que nadie se entere
+    texto: "DMARC falló, pero la política none no bloquea nada y no hay buzón de reportes: el mensaje llegó a la bandeja de entrada y nadie lo registró."
+    practica: "none sirve para empezar, pero sin reportes un fallo que nadie ve sigue siendo un fallo."
     fuente: "RFC 7489 (DMARC); NIST CSF 2.0, función Detectar"
   dmarc_rechazo_legitimo:
     titulo: Correo legítimo rechazado
-    texto: "Un mensaje de tu propio equipo o de un proveedor no tenía SPF ni DKIM alineados con tu dominio, y con reject se descartó."
-    practica: "Antes de subir a reject, autoriza en SPF o firma con DKIM a todos tus remitentes, incluidos los proveedores externos."
+    texto: "Un mensaje legítimo no pasó SPF ni DKIM para tu dominio, y reject lo descartó."
+    practica: "Antes de subir a reject, autoriza al proveedor en SPF. DKIM no lo salva: solo firma tus propios servidores."
     fuente: "RFC 7489 (DMARC); RFC 7208 (SPF); RFC 6376 (DKIM)"
   dmarc_cuarentena_legitimo:
     titulo: Correo legítimo a spam
-    texto: "Un mensaje legítimo no pasó la alineación y la política quarantine lo envió a spam."
-    practica: "Revisa los reportes agregados, corrige el remitente que falla y recién después sube la política."
+    texto: "Un mensaje legítimo no pasó DMARC y la política quarantine lo envió a spam."
+    practica: "Revisa el reporte, corrige el remitente que falla y recién después sube la política."
     fuente: "RFC 7489 (DMARC)"
+  dmarc_fallo_reportado:
+    titulo: Correo legítimo entregado con fallo registrado
+    texto: "El mensaje no pasó DMARC, pero la política none lo dejó llegar, y el reporte deja constancia del remitente que falla."
+    practica: "El reporte te dice qué remitente hay que corregir antes de subir la política."
+    fuente: "RFC 7489 (DMARC); RFC 7208 (SPF)"
   dmarc_fallo_tolerado:
     titulo: Correo legítimo entregado aunque falló DMARC
-    texto: "El mensaje no pasó la alineación, pero la política no lo bloquea, así que llegó igual."
-    practica: "Que llegue no significa que esté bien configurado: sin reportes no sabes qué remitente está roto hasta que la política se endurezca."
+    texto: "El mensaje no pasó DMARC, pero la política none lo dejó llegar y no hay reportes que muestren el fallo."
+    practica: "Que llegue no significa que esté bien configurado: sin reportes no sabés qué remitente está roto hasta que subas la política."
     fuente: "RFC 7489 (DMARC)"
   correo_autenticado:
     titulo: Correo autenticado
-    texto: "SPF o DKIM quedaron alineados con el dominio visible del remitente, así que DMARC pasó."
-    practica: "La alineación vincula la autenticación con el dominio que ve la persona. Sin alineación, SPF o DKIM pueden pasar para otro dominio y no protegen nada."
-    fuente: "RFC 7489 (DMARC); RFC 6376 (DKIM)"
+    texto: "SPF o DKIM autorizaron el envío para tu dominio, así que DMARC pasó."
+    practica: "DMARC pasa cuando al menos uno de los dos autoriza al remitente. Por eso el proveedor necesita estar en SPF: DKIM solo firma tus servidores."
+    fuente: "RFC 7489 (DMARC); RFC 7208 (SPF); RFC 6376 (DKIM)"
 
 pesos:
   seguridad: 0.5
   operatividad: 0.35
   costo: 0.15
 
-# Configuración recomendada: la más barata que frena la suplantación sin cortar al equipo ni al proveedor.
+# Configuración recomendada: se sube a reject con el proveedor autorizado y mirando los reportes.
 optimo:
-  politica: reject
-  pct: 100
-  spf: softfail
+  spf: con_proveedor
   dkim: true
-  alineacion: relaxed
+  dmarc: reject
+  reportes: buzon

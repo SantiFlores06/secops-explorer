@@ -88,9 +88,7 @@ function buildFacts(
   action: AuthAction,
 ): Record<string, FactValue> {
   const bannedUntil = state.bannedUntil.get(attempt.ip);
-  const mail = actor.mail
-    ? mailFacts(scenario, config, actor.mail, attempt.roll ?? 0)
-    : {};
+  const mail = actor.mail ? mailFacts(scenario, config, actor.mail) : {};
   return {
     ...config,
     accion: action,

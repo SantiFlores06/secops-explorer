@@ -3,76 +3,47 @@ import type { Config, FactValue, MailProfile, Scenario } from "./types";
 /**
  * Email authentication facts (SPF, DKIM, DMARC) for one message.
  *
- * Pure: the same scenario, config, profile and roll always give the same facts.
- * The roll is drawn once per message when the timeline is built, so it never
- * depends on the configuration.
+ * Pure: the same scenario, config and profile always give the same facts.
  */
 
 /** Facts this module adds to the rule engine, besides the scenario's controls. */
-export const MAIL_FACTS = [
-  "dominio_protegido",
-  "spf_resultado",
-  "dkim_resultado",
-  "dmarc_resultado",
-  "dmarc_accion",
-] as const;
+export const MAIL_FACTS = ["dmarc_resultado", "dmarc_accion"] as const;
 
-type Check = "pass" | "fail" | "none";
-type Alignment = "relaxed" | "strict";
 export type DmarcAction = "entregar" | "cuarentena" | "rechazar";
 
-/** Approximates the organizational domain by its last two labels (news.example.com -> example.com). */
-function organizationalDomain(domain: string): string {
-  return domain.split(".").slice(-2).join(".");
-}
-
-function aligned(signingDomain: string | null, fromDomain: string, mode: Alignment): boolean {
-  if (signingDomain === null) return false;
-  return mode === "strict"
-    ? signingDomain === fromDomain
-    : organizationalDomain(signingDomain) === organizationalDomain(fromDomain);
+/**
+ * DMARC passes when SPF or DKIM passes for the sender:
+ * - Our own servers pass SPF whenever the record exists, and DKIM when signing is on.
+ * - The provider passes SPF only when the record authorizes it. DKIM never covers it.
+ * - A foreign server never passes.
+ */
+function dmarcPasses(mail: MailProfile, config: Config): boolean {
+  const spf =
+    mail.server === "propio"
+      ? config.spf !== "none"
+      : mail.server === "proveedor" && config.spf === "con_proveedor";
+  const dkim = mail.server === "propio" && config.dkim === true;
+  return spf || dkim;
 }
 
 /**
- * SPF and DKIM are checked, aligned against the From domain, and DMARC passes
- * when at least one of them is aligned. Then the policy decides what happens
- * to a failing message, but only for the share of messages `pct` selects.
+ * The published policy only acts on mail from the protected domain, and only
+ * when DMARC fails. `none` delivers the message and leaves the outcome to the
+ * reports rules.
  */
-export function mailFacts(
-  scenario: Scenario,
-  config: Config,
-  mail: MailProfile,
-  roll: number,
-): Record<string, FactValue> {
-  const spfEnabled = config.spf !== "off";
-  let spf: Check;
-  if (mail.spf === "tercero") spf = "pass";
-  else if (!spfEnabled) spf = "none";
-  else spf = mail.spf === "propio" ? "pass" : "fail";
-  const spfAligned = spf === "pass" && mail.spf === "propio";
-
-  const signed =
-    mail.signing === "tercero" ||
-    ((mail.signing === "propia" || mail.signing === "delegada") && config.dkim === true);
-  const dkim: Check = signed ? "pass" : "none";
-  const alignment: Alignment = config.alineacion === "strict" ? "strict" : "relaxed";
-  const dkimAligned = signed && aligned(mail.signingDomain, mail.fromDomain, alignment);
-
-  const dmarc: Check = spfAligned || dkimAligned ? "pass" : "fail";
+export function mailFacts(scenario: Scenario, config: Config, mail: MailProfile): Record<string, FactValue> {
+  const pass = dmarcPasses(mail, config);
   const protectedMail =
     scenario.protectedDomain !== undefined && mail.fromDomain === scenario.protectedDomain;
 
   let action: DmarcAction = "entregar";
-  if (protectedMail && dmarc === "fail" && roll < Number(config.pct)) {
-    if (config.politica === "quarantine") action = "cuarentena";
-    if (config.politica === "reject") action = "rechazar";
+  if (protectedMail && !pass) {
+    if (config.dmarc === "quarantine") action = "cuarentena";
+    if (config.dmarc === "reject") action = "rechazar";
   }
 
   return {
-    dominio_protegido: protectedMail,
-    spf_resultado: spf,
-    dkim_resultado: dkim,
-    dmarc_resultado: dmarc === "pass" ? "pass" : "fail",
+    dmarc_resultado: pass ? "pass" : "fail",
     dmarc_accion: action,
   };
 }

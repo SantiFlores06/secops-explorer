@@ -19,12 +19,7 @@ export function buildTimeline(scenario: Scenario, seed: number): Attempt[] {
   for (const actor of scenario.actors) {
     const rng = createRng(deriveSeed(seed, actor.id));
     const ips = resolveIps(actor, rng, usedIps);
-    const own = actorAttempts(actor, ips, rng, scenario.durationSeconds);
-    // Drawn after the actor's own draws, so only mail actors' streams change.
-    if (actor.mail) {
-      for (const attempt of own) attempt.roll = rng.int(0, 99);
-    }
-    drafts.push(...own);
+    drafts.push(...actorAttempts(actor, ips, rng, scenario.durationSeconds));
   }
 
   return drafts

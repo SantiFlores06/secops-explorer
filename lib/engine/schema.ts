@@ -102,9 +102,7 @@ const control = z.discriminatedUnion("tipo", [toggleControl, numberControl, enum
 
 const mailProfile = z.strictObject({
   dominio: reservedMailDomain,
-  spf: z.enum(["propio", "tercero", "ninguno"]),
-  firma: z.enum(["propia", "delegada", "tercero", "ninguna"]),
-  dominio_firma: reservedMailDomain.optional(),
+  servidor: z.enum(["propio", "proveedor", "ajeno"]),
 });
 
 const ips = z.discriminatedUnion("tipo", [
@@ -280,13 +278,8 @@ const validated = rawScenario.superRefine((data, ctx) => {
   const fixedIps: string[] = [];
   data.actores.forEach((item, index) => {
     if (item.ips.tipo === "fija") fixedIps.push(item.ips.valor);
-    if (item.correo) {
-      if (!data.dominio_protegido) {
-        fail("los actores con correo requieren dominio_protegido", ["dominio_protegido"]);
-      }
-      if (item.correo.firma === "delegada" && !item.correo.dominio_firma) {
-        fail("una firma delegada requiere dominio_firma", ["actores", index, "correo"]);
-      }
+    if (item.correo && !data.dominio_protegido) {
+      fail("los actores con correo requieren dominio_protegido", ["dominio_protegido"]);
     }
     if (item.rol === "legitimo") {
       for (const user of item.usuarios) {
@@ -365,13 +358,7 @@ function toControl(raw: RawControl): ControlDef {
 }
 
 function toMail(raw: NonNullable<RawActor["correo"]>): MailProfile {
-  const signingDomain =
-    raw.firma === "ninguna"
-      ? null
-      : raw.firma === "delegada"
-        ? (raw.dominio_firma ?? null)
-        : raw.dominio;
-  return { fromDomain: raw.dominio, spf: raw.spf, signing: raw.firma, signingDomain };
+  return { fromDomain: raw.dominio, server: raw.servidor };
 }
 
 function toActor(raw: RawActor): Actor {

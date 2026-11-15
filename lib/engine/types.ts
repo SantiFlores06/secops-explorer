@@ -129,6 +129,16 @@ export interface Weights {
   cost: number;
 }
 
+/**
+ * Scenario-specific UI copy. `legitSummary` holds the placeholders `{permitidos}`
+ * and `{total}`, filled in by the view.
+ */
+export interface Wording {
+  configPanelTitle: string;
+  operationsHint: string;
+  legitSummary: string;
+}
+
 export interface Scenario {
   id: string;
   track: string;
@@ -151,6 +161,7 @@ export interface Scenario {
   explanations: Record<string, Explanation>;
   weights: Weights;
   optimal: Config;
+  wording: Wording;
 }
 
 /** One action an actor tries against the server, before any evaluation. */

@@ -172,6 +172,18 @@ const explanation = z.strictObject({
   fuente: text,
 });
 
+/**
+ * UI copy that changes with the scenario. Defaults are the SSH wording, so a
+ * scenario that omits `vocabulario` reads exactly as it always did.
+ */
+const wording = z
+  .strictObject({
+    panel_configuracion: text.default("Configuración del servidor"),
+    operatividad_ayuda: text.default("Accesos legítimos que pudieron entrar."),
+    legitimo_resumen: text.default("Pudo entrar {permitidos} de {total} veces"),
+  })
+  .prefault({});
+
 const rawScenario = z.strictObject({
   id,
   track: id,
@@ -187,6 +199,7 @@ const rawScenario = z.strictObject({
   usuarios_existentes: z.array(text).min(1),
   usuarios_permitidos: z.array(text),
   dominio_protegido: reservedMailDomain.optional(),
+  vocabulario: wording,
   metodos_aceptados: z.strictObject({
     login_clave: id.optional(),
     login_password: id.optional(),
@@ -312,6 +325,12 @@ const validated = rawScenario.superRefine((data, ctx) => {
   for (const controlId of controlIds) {
     if (!(controlId in data.optimo)) {
       fail(`falta el control en el óptimo: ${controlId}`, ["optimo"]);
+    }
+  }
+
+  for (const placeholder of ["{permitidos}", "{total}"]) {
+    if (!data.vocabulario.legitimo_resumen.includes(placeholder)) {
+      fail(`legitimo_resumen debe incluir ${placeholder}`, ["vocabulario", "legitimo_resumen"]);
     }
   }
 
@@ -449,6 +468,11 @@ function toScenario(raw: RawScenario): Scenario {
       cost: raw.pesos.costo,
     },
     optimal: raw.optimo,
+    wording: {
+      configPanelTitle: raw.vocabulario.panel_configuracion,
+      operationsHint: raw.vocabulario.operatividad_ayuda,
+      legitSummary: raw.vocabulario.legitimo_resumen,
+    },
   };
 }
 

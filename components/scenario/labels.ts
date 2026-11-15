@@ -41,28 +41,26 @@ export function attackerValence(status: AttackerStatus): Valence {
   return status === "detenido" ? "good" : status === "detectado" ? "warn" : "bad";
 }
 
-export const VALENCE_STYLE: Record<
-  Valence,
-  { border: string; badge: string; meaning: string }
-> = {
+/** Tailwind classes per valence. `rail` is the row marker; `pill` is the text status. */
+export const VALENCE_STYLE: Record<Valence, { rail: string; pill: string; meaning: string }> = {
   good: {
-    border: "border-l-emerald-600",
-    badge: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+    rail: "bg-defense",
+    pill: "border-defense/60 bg-defense/10 text-defense",
     meaning: "Resultado favorable",
   },
   warn: {
-    border: "border-l-amber-500",
-    badge: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+    rail: "bg-caution",
+    pill: "border-caution/60 bg-caution/10 text-caution",
     meaning: "Resultado con reservas",
   },
   bad: {
-    border: "border-l-rose-600",
-    badge: "bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200",
+    rail: "bg-alert",
+    pill: "border-alert/60 bg-alert/10 text-alert",
     meaning: "Resultado desfavorable",
   },
   neutral: {
-    border: "border-l-zinc-400",
-    badge: "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200",
+    rail: "bg-idle",
+    pill: "border-idle/60 bg-idle/10 text-idle",
     meaning: "Resultado esperado",
   },
 };

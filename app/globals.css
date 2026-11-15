@@ -1,49 +1,101 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/*
+ * Design tokens. Dark-only console. Every text token is at least 4.5:1 against
+ * the panel and base backgrounds; teal is the defense/interactive color, amber
+ * and red are reserved for outcome states.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-base: #0b1020;
+  --color-panel: #111a2e;
+  --color-raised: #172440;
+  --color-field: #0a1324;
+  --color-line: #22345a;
+  --color-line-strong: #3a5485;
+  --color-ink: #e4ebf7;
+  --color-muted: #9aaacb;
+  --color-defense: #2dd4a0;
+  --color-defense-hi: #5fe6bb;
+  --color-defense-ink: #03221a;
+  --color-caution: #f5b841;
+  --color-alert: #ff5c6c;
+  --color-idle: #8fa0c0;
+  --font-mono:
+    var(--font-plex-mono), ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-defense-hi);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-defense);
+  color: var(--color-defense-ink);
 }
 
 @layer components {
-  .card {
-    @apply rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900;
+  .panel {
+    @apply rounded-[2px] border border-line bg-panel;
+  }
+
+  .panel-head {
+    @apply flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line bg-raised px-4 py-2.5;
+  }
+
+  .label-caps {
+    @apply text-xs font-bold tracking-[0.14em] text-muted uppercase;
   }
 
   .btn {
-    @apply inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-[2px] border px-4 py-2 text-sm font-bold tracking-wide uppercase disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply bg-sky-700 text-white hover:bg-sky-800 dark:bg-sky-600 dark:hover:bg-sky-500;
+    @apply border-defense bg-defense text-defense-ink hover:border-defense-hi hover:bg-defense-hi;
   }
 
   .btn-secondary {
-    @apply border border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800;
+    @apply border-line-strong bg-field text-ink hover:border-defense hover:text-defense;
   }
 
   .field {
-    @apply min-h-11 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100;
+    @apply min-h-11 rounded-[2px] border border-line-strong bg-field px-3 py-2 text-sm text-ink;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-[2px] border px-2 py-0.5 text-xs font-bold tracking-wide whitespace-nowrap uppercase;
+  }
+
+  .meter-track {
+    @apply h-2 overflow-hidden border border-line bg-field;
+  }
+
+  .meter-fill {
+    @apply h-full bg-defense;
+  }
+}
+
+/* Color and border changes fade only when motion is allowed. */
+@media (prefers-reduced-motion: no-preference) {
+  .btn {
+    transition:
+      background-color 150ms ease-out,
+      border-color 150ms ease-out,
+      color 150ms ease-out;
   }
 }
 
@@ -51,17 +103,15 @@ body {
 @keyframes fx-enter {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 
 .fx-enter {
-  animation: fx-enter 320ms ease-out both;
-  animation-delay: calc(var(--i, 0) * 50ms);
+  animation: fx-enter 240ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 40ms);
 }
 
 @media (prefers-reduced-motion: reduce) {

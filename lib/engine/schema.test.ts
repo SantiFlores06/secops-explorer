@@ -91,3 +91,40 @@ describe("parseScenario", () => {
     expectRejected((d) => (d.actores[1].ips = structuredClone(d.actores[0].ips)), "IP fija repetida");
   });
 });
+
+describe("scenario wording", () => {
+  const mail: unknown = parse(readFileSync(path.join(CONTENT_DIR, "dmarc-suplantacion.yaml"), "utf8"));
+
+  it("defaults to the SSH wording when vocabulario is missing", () => {
+    expect(parseScenario(raw).wording).toEqual({
+      configPanelTitle: "Configuración del servidor",
+      operationsHint: "Accesos legítimos que pudieron entrar.",
+      legitSummary: "Pudo entrar {permitidos} de {total} veces",
+    });
+  });
+
+  it("reads the mail wording from the DMARC scenario", () => {
+    const scenario = parseScenario(mail);
+    expect(scenario.id).toBe("dmarc-suplantacion");
+    expect(scenario.wording.configPanelTitle).toBe("Configuración del dominio");
+    expect(scenario.wording.operationsHint).toBe("Correo legítimo que llegó.");
+    expect(scenario.wording.legitSummary).toBe("Llegó {permitidos} de {total} veces");
+  });
+
+  it("fills the wording keys a scenario leaves out with the defaults", () => {
+    const draft = structuredClone(raw) as Draft;
+    draft.vocabulario = { panel_configuracion: "Panel de prueba" };
+    const wording = parseScenario(draft).wording;
+    expect(wording.configPanelTitle).toBe("Panel de prueba");
+    expect(wording.operationsHint).toBe("Accesos legítimos que pudieron entrar.");
+  });
+
+  it("rejects a legit summary without the placeholders", () => {
+    expectRejected((d) => (d.vocabulario = { legitimo_resumen: "Llegó siempre" }), "{permitidos}");
+    expectRejected((d) => (d.vocabulario = { legitimo_resumen: "Llegó {permitidos}" }), "{total}");
+  });
+
+  it("rejects unknown wording keys", () => {
+    expectRejected((d) => (d.vocabulario = { titulo_extra: "x" }), "Unrecognized key");
+  });
+});

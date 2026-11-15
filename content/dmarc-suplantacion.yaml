@@ -20,6 +20,12 @@ usuarios_existentes: [nomina@example.com, facturacion@example.com, novedades@exa
 usuarios_permitidos: []
 dominio_protegido: example.com
 
+# Textos de la interfaz propios de este escenario. Sin este bloque se usan los de SSH.
+vocabulario:
+  panel_configuracion: Configuración del dominio
+  operatividad_ayuda: Correo legítimo que llegó.
+  legitimo_resumen: "Llegó {permitidos} de {total} veces"
+
 # Sin inicio de sesión: estas claves no aplican al correo.
 metodos_aceptados: {}
 

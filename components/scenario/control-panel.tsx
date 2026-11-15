@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import type {
   Config,
   ControlDef,
@@ -11,46 +11,54 @@ import type {
 } from "@/lib/engine/types";
 
 interface ControlPanelProps {
+  title: string;
   controls: ControlDef[];
   config: Config;
   onChange: (controlId: string, value: ControlValue) => void;
 }
 
-export default function ControlPanel({ controls, config, onChange }: ControlPanelProps) {
+export default function ControlPanel({ title, controls, config, onChange }: ControlPanelProps) {
+  const titleId = useId();
   return (
-    <fieldset className="flex flex-col gap-5">
-      <legend className="mb-3 text-lg font-semibold">Configuración del servidor</legend>
-      {controls.map((control) => {
-        if (control.kind === "toggle") {
+    <section aria-labelledby={titleId} className="panel">
+      <div className="panel-head">
+        <h2 id={titleId} className="label-caps">
+          {title}
+        </h2>
+      </div>
+      <div role="group" aria-labelledby={titleId} className="flex flex-col gap-5 p-4">
+        {controls.map((control) => {
+          if (control.kind === "toggle") {
+            return (
+              <ToggleField
+                key={control.id}
+                control={control}
+                value={config[control.id] === true}
+                onChange={(value) => onChange(control.id, value)}
+              />
+            );
+          }
+          if (control.kind === "enum") {
+            return (
+              <EnumField
+                key={control.id}
+                control={control}
+                value={String(config[control.id])}
+                onChange={(value) => onChange(control.id, value)}
+              />
+            );
+          }
           return (
-            <ToggleField
+            <NumberField
               key={control.id}
               control={control}
-              value={config[control.id] === true}
+              value={Number(config[control.id])}
               onChange={(value) => onChange(control.id, value)}
             />
           );
-        }
-        if (control.kind === "enum") {
-          return (
-            <EnumField
-              key={control.id}
-              control={control}
-              value={String(config[control.id])}
-              onChange={(value) => onChange(control.id, value)}
-            />
-          );
-        }
-        return (
-          <NumberField
-            key={control.id}
-            control={control}
-            value={Number(config[control.id])}
-            onChange={(value) => onChange(control.id, value)}
-          />
-        );
-      })}
-    </fieldset>
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -73,16 +81,14 @@ function ToggleField({
           checked={value}
           onChange={(event) => onChange(event.target.checked)}
           aria-describedby={helpId}
-          className="mt-0.5 size-5 shrink-0 accent-sky-700"
+          className="mt-0.5 size-5 shrink-0 accent-defense"
         />
-        <span className="font-medium">
+        <span className="font-bold">
           {control.label}{" "}
-          <span className="font-normal text-zinc-600 dark:text-zinc-400">
-            ({value ? "activado" : "desactivado"})
-          </span>
+          <span className="font-normal text-muted">({value ? "activado" : "desactivado"})</span>
         </span>
       </label>
-      <p id={helpId} className="ml-8 text-sm leading-5 text-zinc-600 dark:text-zinc-400">
+      <p id={helpId} className="ml-8 text-xs leading-5 text-muted">
         {control.help}
       </p>
     </div>
@@ -110,7 +116,7 @@ function NumberField({
 
   return (
     <div>
-      <label htmlFor={inputId} className="font-medium">
+      <label htmlFor={inputId} className="font-bold">
         {control.label}
       </label>
       <div className="mt-1 flex items-center gap-2">
@@ -130,13 +136,11 @@ function NumberField({
           }}
           onBlur={() => setDraft(null)}
           aria-describedby={helpId}
-          className="field w-28"
+          className="field w-28 tabular-nums"
         />
-        {control.unit ? (
-          <span className="text-sm text-zinc-600 dark:text-zinc-400">{control.unit}</span>
-        ) : null}
+        {control.unit ? <span className="text-xs text-muted">{control.unit}</span> : null}
       </div>
-      <p id={helpId} className="mt-1 text-sm leading-5 text-zinc-600 dark:text-zinc-400">
+      <p id={helpId} className="mt-1 text-xs leading-5 text-muted">
         {control.help} Valores de {control.min} a {control.max}.
       </p>
     </div>
@@ -157,7 +161,7 @@ function EnumField({
 
   return (
     <div>
-      <label htmlFor={selectId} className="font-medium">
+      <label htmlFor={selectId} className="font-bold">
         {control.label}
       </label>
       <select
@@ -173,7 +177,7 @@ function EnumField({
           </option>
         ))}
       </select>
-      <p id={helpId} className="mt-1 text-sm leading-5 text-zinc-600 dark:text-zinc-400">
+      <p id={helpId} className="mt-1 text-xs leading-5 text-muted">
         {control.help}
       </p>
     </div>

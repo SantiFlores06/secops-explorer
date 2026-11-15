@@ -21,6 +21,9 @@ Save tokens. Talk short.
 - Code/identifiers/commits: normal English. Product UI copy: Spanish.
 - Report = `DONE|FAIL`, files touched, cmd results. Nothing else.
 - Unsure? Check code. No guess. One question max, then stop.
+- Speed > perfection. First solution that passes gate wins. No deliberating options.
+- Time box: max 40 tool calls per task. Over? Stop, report what left.
+- No extra polish, no unasked refactors, no repeated verification loops.
 
 ## Hard rules (ALL agents)
 
@@ -52,7 +55,7 @@ E2E when UI touched: `npm run test:e2e`. CI runs same scripts. Names fixed: `tes
 
 ## Agent: builder
 
-Model: Haiku 5.5 (`claude-haiku-5-5`), effort high.
+Model: Haiku 5.5 (`claude-haiku-5-5`), effort medium.
 
 Job: build next MVP slice from `docs/concepto.md`. Order: engine -> scenario -> UI -> next scenario (DMARC, web headers).
 
@@ -65,7 +68,7 @@ Never touch qa-owned `e2e/` files except to add new flows.
 
 ## Agent: qa
 
-Model: Opus 5.5 (`claude-opus-5-5`), effort high.
+Model: Opus 5.5 (`claude-opus-5-5`), effort medium.
 
 Job: break it. Fresh eyes, no trust in builder.
 

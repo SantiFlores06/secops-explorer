@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Self-hosted at build time: the browser never requests fonts from Google.
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -24,31 +22,32 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
+    <html lang="es" className={`${plexMono.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col bg-base text-ink">
         <a
           href="#contenido"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-md focus:bg-sky-700 focus:px-4 focus:py-2 focus:text-white"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-10 focus:rounded-[2px] focus:bg-defense focus:px-4 focus:py-2 focus:font-bold focus:text-defense-ink"
         >
           Saltar al contenido
         </a>
-        <header className="border-b border-zinc-200 dark:border-zinc-800">
+        <header className="border-b border-line bg-panel">
           <nav
             aria-label="Principal"
-            className="mx-auto flex w-full max-w-6xl items-center px-4 py-3 sm:px-6"
+            className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6"
           >
-            <Link href="/" className="font-semibold tracking-tight">
+            <span aria-hidden="true" className="size-2.5 bg-defense" />
+            <Link
+              href="/"
+              className="font-bold tracking-[0.14em] text-ink uppercase hover:text-defense"
+            >
               SecOps Explorer
             </Link>
           </nav>
         </header>
-        <main id="contenido" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+        <main id="contenido" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
           {children}
         </main>
-        <footer className="border-t border-zinc-200 px-4 py-6 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400 sm:px-6">
+        <footer className="border-t border-line bg-panel px-4 py-4 text-xs leading-5 text-muted sm:px-6">
           <p className="mx-auto w-full max-w-6xl">
             Todo corre en tu navegador: sin cuentas ni rastreadores. Las direcciones IP y los
             nombres que ves son ficticios, tomados de rangos reservados para documentación.

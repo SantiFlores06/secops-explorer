@@ -21,10 +21,16 @@ Save tokens. Talk short.
 - Code/identifiers/commits: normal English. Product UI copy: Spanish.
 - Report = `DONE|FAIL`, files touched, cmd results. Nothing else.
 - Unsure? Check code. No guess. One question max, then stop.
+- Speed > perfection. First solution that passes gate wins. No deliberating options.
+- Time box: max 40 tool calls per task. Over? Stop, report what left.
+- No extra polish, no unasked refactors, no repeated verification loops.
 
 ## Hard rules (ALL agents)
 
-- NO commit, NO push. Human commits, own name, conventional msg, no AI trailer.
+- Subagents: NO commit, NO push. Only orchestrator commits + pushes.
+- Commit ratio: max 2 orchestrator commits, then stop till human makes 1. Human commit resets count.
+- Orchestrator commits: author `Claude <noreply@anthropic.com>`. Human commits: own name. Ratio countable from `git log`.
+- All commits: conventional msg, no AI trailer.
 - NO touch `.github/`, Vercel config. Human owns. Need change? Report snippet.
 - NO `npm audit fix --force`.
 - NO `Math.random`, `Date.now`, `new Date()` in `lib/engine/`. Use seeded rng (mulberry32).
@@ -49,7 +55,7 @@ E2E when UI touched: `npm run test:e2e`. CI runs same scripts. Names fixed: `tes
 
 ## Agent: builder
 
-Model: Haiku 5.5 (`claude-haiku-5-5`), effort high.
+Model: Haiku 5.5 (`claude-haiku-5-5`), effort medium.
 
 Job: build next MVP slice from `docs/concepto.md`. Order: engine -> scenario -> UI -> next scenario (DMARC, web headers).
 
@@ -62,7 +68,7 @@ Never touch qa-owned `e2e/` files except to add new flows.
 
 ## Agent: qa
 
-Model: Opus 5.5 (`claude-opus-5-5`), effort high.
+Model: Opus 5.5 (`claude-opus-5-5`), effort medium.
 
 Job: break it. Fresh eyes, no trust in builder.
 
@@ -77,4 +83,4 @@ Report: bugs found, bugs fixed, still open, coverage gaps. Caveman.
 
 ## Handoff
 
-builder -> qa -> human. Human reviews diff, commits. Next slice only after human ok.
+builder -> qa -> orchestrator commits (ratio rule) -> human reviews. Next slice only after human ok.

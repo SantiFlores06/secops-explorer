@@ -72,16 +72,12 @@ export type CredentialModel =
   | { kind: "valid" }
   | { kind: "guessed"; successProbability: number };
 
-/** How a message is authenticated. Values come from scenario data (Spanish). */
+/** Where a message is sent from. Values come from scenario data (Spanish). */
 export interface MailProfile {
   /** Domain shown in the From header. */
   fromDomain: string;
-  /** "propio": our SPF authorizes the sender. "tercero": a third party's SPF passes for its own domain. "ninguno": not authorized. */
-  spf: "propio" | "tercero" | "ninguno";
-  /** "propia": we sign. "delegada": a provider signs with a delegated subdomain. "tercero": own key. "ninguna": unsigned. */
-  signing: "propia" | "delegada" | "tercero" | "ninguna";
-  /** Domain in the DKIM d= tag, or null when unsigned. */
-  signingDomain: string | null;
+  /** "propio": our servers. "proveedor": an external provider sending for us. "ajeno": anyone else. */
+  server: "propio" | "proveedor" | "ajeno";
 }
 
 export interface Actor {
@@ -133,6 +129,16 @@ export interface Weights {
   cost: number;
 }
 
+/**
+ * Scenario-specific UI copy. `legitSummary` holds the placeholders `{permitidos}`
+ * and `{total}`, filled in by the view.
+ */
+export interface Wording {
+  configPanelTitle: string;
+  operationsHint: string;
+  legitSummary: string;
+}
+
 export interface Scenario {
   id: string;
   track: string;
@@ -155,6 +161,7 @@ export interface Scenario {
   explanations: Record<string, Explanation>;
   weights: Weights;
   optimal: Config;
+  wording: Wording;
 }
 
 /** One action an actor tries against the server, before any evaluation. */
@@ -168,8 +175,6 @@ export interface Attempt {
   credential: Credential;
   viaVpn: boolean;
   hasSecondFactor: boolean;
-  /** Mail only: 0-99, fixed per message by the seed. Below the pct control, DMARC policy applies. */
-  roll?: number;
 }
 
 export interface SimEvent {

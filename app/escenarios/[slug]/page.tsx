@@ -43,6 +43,7 @@ export default async function ScenarioPage({ params }: PageProps<"/escenarios/[s
           <span className="chip chip-lavender">{scenario.actors.length} actores</span>
         </div>
         <p className="mt-4 max-w-3xl leading-7 text-muted">{scenario.summary}</p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{scenario.context}</p>
       </header>
 
       <Suspense

@@ -47,13 +47,13 @@ describe("NetworkDiagram", () => {
 
       const actorNodes = container.querySelectorAll('[data-node="actor"]');
       expect(actorNodes).toHaveLength(scenario.actors.length);
-      const titles = [...actorNodes].map((node) => node.querySelector("title")?.textContent ?? "");
+      const titles = [...actorNodes].map((node) => node.getAttribute("data-name") ?? "");
       for (const actor of scenario.actors) {
         expect(titles.some((title) => title.startsWith(actor.name))).toBe(true);
       }
 
-      const target = container.querySelector('[data-node="target"] > title');
-      expect(target?.textContent).toBe(scenario.wording.targetLabel);
+      const target = container.querySelector('[data-node="target"]');
+      expect(target?.getAttribute("data-name")).toBe(scenario.wording.targetLabel);
       screen.getByText("Simulá para ver el tráfico");
     });
   }
@@ -69,7 +69,7 @@ describe("NetworkDiagram", () => {
         onStepChange={() => {}}
       />,
     );
-    expect(document.querySelector('[data-node="target"] > title')?.textContent).toBe(
+    expect(document.querySelector('[data-node="target"]')?.getAttribute("data-name")).toBe(
       "Buzones de la cooperativa",
     );
   });

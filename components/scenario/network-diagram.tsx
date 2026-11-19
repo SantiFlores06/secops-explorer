@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
-import type { TimelineRow } from "@/lib/engine/summary";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { formatClock, type TimelineRow } from "@/lib/engine/summary";
 import type { Config, Outcome, Scenario } from "@/lib/engine/types";
 import { OUTCOME_LABEL, ROLE_LABEL } from "./labels";
 
 interface NetworkDiagramProps {
   scenario: Scenario;
-  /** The configuration on screen; its enabled toggles fill the defenses node. */
+  /** The configuration that was simulated; its enabled defenses fill the config node. */
   config: Config;
   /** Timeline rows of the last simulation, or null before the first one. */
   rows: TimelineRow[] | null;
+  /** Stepper index: 0 is the configuration, 1..rows.length an event, rows.length + 1 the summary. */
   step: number;
   onStepChange: (step: number) => void;
 }
@@ -29,9 +30,7 @@ interface Box {
 
 interface ActorSlot {
   box: Box;
-  /** Where the packet leaves the actor. */
-  anchor: Point;
-  /** Center of the origin chip shown while the actor is active. */
+  /** Center of the origin label shown while the actor is active. */
   label: Point;
   /** Route from the actor to the shield's entry edge (used when the packet is blocked). */
   blocked: string;
@@ -42,13 +41,10 @@ interface ActorSlot {
 interface Geometry {
   viewW: number;
   viewH: number;
-  /** Font size (SVG units) for secondary labels. Keeps rendered text >= 11px on phones. */
-  smallText: number;
   actors: ActorSlot[];
   shield: Box;
   target: Box;
   blockPoint: Point;
-  targetEntry: Point;
   /** Idle dashed connector from the shield to the target. */
   throughPath: string;
 }
@@ -70,8 +66,8 @@ const TARGET_W = 150;
 const TARGET_H = 84;
 const TARGET_CY = 190;
 
-// Portrait (phones): actors stacked in a column on the right, a rail on the left,
-// shield in the middle and target at the bottom. Sized so 1 unit is about 1px at 320px.
+// Portrait (phones): actors stacked on the right, a rail on the left, shield in the middle
+// and target at the bottom. One unit is about one CSS pixel at 320px.
 const PORTRAIT_W = 320;
 const PORTRAIT_PAD = 12;
 const P_CX = PORTRAIT_W / 2;
@@ -84,64 +80,44 @@ const P_SHIELD = { w: 200, h: 150 };
 const P_GAP = 40;
 const P_TARGET_H = 72;
 
-const STEP_MS = 2500;
-const PACKET_MS = 1600;
-const PACKET_RADIUS = 7;
-/** Ease-in-out for the packet: it is on screen moving, so it accelerates and settles. */
-const PACKET_SPLINE = { calcMode: "spline", keyTimes: "0;1", keySplines: "0.77 0 0.175 1" };
+/** Time between automatic steps while the game plays. */
+const PLAY_MS = 2600;
 
-const PALETTE = {
-  paper: { fill: "var(--color-field)", stroke: "var(--color-line)" },
-  idle: { fill: "var(--color-field)", stroke: "var(--color-line-strong)" },
-  legitimo: { fill: "var(--color-green)", stroke: "var(--color-green-ink)" },
-  atacante: { fill: "var(--color-red)", stroke: "var(--color-red-ink)" },
-  shield: { fill: "var(--color-lavender)", stroke: "var(--color-lavender-ink)" },
-  target: { fill: "var(--color-slate)", stroke: "var(--color-slate-ink)" },
-  targetPermitido: { fill: "var(--color-green)", stroke: "var(--color-green-ink)" },
-  targetDetectado: { fill: "var(--color-amber)", stroke: "var(--color-amber-ink)" },
-  targetNoDetectado: { fill: "var(--color-red)", stroke: "var(--color-red-ink)" },
+const PACKET_CLASS: Record<Outcome, string> = {
+  permitido: "p-g",
+  bloqueado: "p-s",
+  detectado: "p-a",
+  no_detectado: "p-r",
 };
 
-const PACKET_COLOR: Record<Outcome, string> = {
-  permitido: "var(--color-green-ink)",
-  bloqueado: "var(--color-slate-ink)",
-  detectado: "var(--color-amber-ink)",
-  no_detectado: "var(--color-red-ink)",
+const TARGET_CLASS: Record<Outcome, string> = {
+  permitido: "node-g",
+  bloqueado: "node-t",
+  detectado: "node-a",
+  no_detectado: "node-r",
 };
 
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const RING_COLOR: Record<Outcome, string> = {
+  permitido: "var(--g-dot)",
+  bloqueado: "var(--s-dot)",
+  detectado: "var(--a-dot)",
+  no_detectado: "var(--r-dot)",
+};
+
 /** Phones and narrow tablets get the portrait layout. Matches Tailwind's `sm` breakpoint minus 1px. */
 const PORTRAIT_QUERY = "(max-width: 639px)";
 
-/** A stable subscribe function per query, so useSyncExternalStore does not resubscribe each render. */
-function subscribeTo(query: string) {
-  return (onChange: () => void) => {
-    if (typeof window.matchMedia !== "function") return () => {};
-    const media = window.matchMedia(query);
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  };
-}
-
-const subscribeReducedMotion = subscribeTo(REDUCED_MOTION_QUERY);
-const subscribePortrait = subscribeTo(PORTRAIT_QUERY);
-
-function matches(query: string): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia(query).matches;
-}
-
-function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(
-    subscribeReducedMotion,
-    () => matches(REDUCED_MOTION_QUERY),
-    () => false,
-  );
+function subscribePortrait(onChange: () => void) {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const media = window.matchMedia(PORTRAIT_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
 }
 
 function usePortrait(): boolean {
   return useSyncExternalStore(
     subscribePortrait,
-    () => matches(PORTRAIT_QUERY),
+    () => typeof window.matchMedia === "function" && window.matchMedia(PORTRAIT_QUERY).matches,
     () => false,
   );
 }
@@ -193,7 +169,6 @@ function landscapeGeometry(count: number): Geometry {
     const blocked = `M ${ACTOR_RIGHT} ${y} ${curve(ACTOR_RIGHT, y, SHIELD_LEFT, SHIELD.cy)}`;
     return {
       box: { x: LEFT_X, y: y - ACTOR_H / 2, w: ACTOR_W, h: ACTOR_H },
-      anchor: { x: ACTOR_RIGHT, y },
       label: { x: (ACTOR_RIGHT + SHIELD_LEFT) / 2, y: (y + SHIELD.cy) / 2 },
       blocked,
       delivered: `${blocked} L ${SHIELD_RIGHT} ${SHIELD.cy} ${curve(SHIELD_RIGHT, SHIELD.cy, TARGET_X, TARGET_CY)}`,
@@ -202,12 +177,10 @@ function landscapeGeometry(count: number): Geometry {
   return {
     viewW: LANDSCAPE_W,
     viewH: LANDSCAPE_H,
-    smallText: 11,
     actors,
     shield: { x: SHIELD_LEFT, y: SHIELD.cy - SHIELD.h / 2, w: SHIELD.w, h: SHIELD.h },
     target: { x: TARGET_X, y: TARGET_CY - TARGET_H / 2, w: TARGET_W, h: TARGET_H },
     blockPoint: { x: SHIELD_LEFT, y: SHIELD.cy },
-    targetEntry: { x: TARGET_X, y: TARGET_CY },
     throughPath: `M ${SHIELD_RIGHT} ${SHIELD.cy} ${curve(SHIELD_RIGHT, SHIELD.cy, TARGET_X, TARGET_CY)}`,
   };
 }
@@ -231,7 +204,6 @@ function portraitGeometry(count: number): Geometry {
     const blocked = `M ${P_ACTOR_X} ${y} L ${P_RAIL_X} ${y} L ${P_RAIL_X} ${shieldCy} L ${shield.x} ${shieldCy}`;
     return {
       box: { x: P_ACTOR_X, y: top, w: P_ACTOR_W, h: P_ACTOR_H },
-      anchor: { x: P_ACTOR_X, y },
       label: { x: (P_RAIL_X + P_ACTOR_X) / 2, y },
       blocked,
       delivered: `${blocked} L ${P_CX} ${shieldCy} L ${P_CX} ${target.y}`,
@@ -241,12 +213,10 @@ function portraitGeometry(count: number): Geometry {
   return {
     viewW: PORTRAIT_W,
     viewH: target.y + P_TARGET_H + PORTRAIT_PAD,
-    smallText: 12,
     actors,
     shield,
     target,
     blockPoint: { x: shield.x, y: shieldCy },
-    targetEntry: { x: P_CX, y: target.y },
     throughPath: `M ${P_CX} ${shield.y + shield.h} L ${P_CX} ${target.y}`,
   };
 }
@@ -255,6 +225,10 @@ function originOf(row: TimelineRow): string {
   return row.ip ?? `${row.ipCount} IPs`;
 }
 
+/**
+ * The network as HTML nodes on a fixed-size stage, scaled down to fit the column. The
+ * packets travel with CSS offset-path; the stage is in CSS pixels, so the paths match.
+ */
 export default function NetworkDiagram({
   scenario,
   config,
@@ -262,45 +236,56 @@ export default function NetworkDiagram({
   step,
   onStepChange,
 }: NetworkDiagramProps) {
-  const uid = useId().replace(/:/g, "");
-  const shadowId = `${uid}-shadow`;
-  const gridId = `${uid}-grid`;
-  const reducedMotion = usePrefersReducedMotion();
   const portrait = usePortrait();
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
   const [playing, setPlaying] = useState(false);
   const [replay, setReplay] = useState(0);
 
-  const last = rows ? rows.length - 1 : -1;
-  const index = rows ? Math.min(step, last) : -1;
+  const last = rows ? rows.length + 1 : 0;
+  const index = rows && step >= 1 && step <= rows.length ? step - 1 : -1;
   const row = rows && index >= 0 ? rows[index] : null;
-  const isPlaying = playing && row !== null && index < last;
-
-  // Auto-advance: one step every STEP_MS. Stops itself on the last step.
-  useEffect(() => {
-    if (!playing || !rows || step >= rows.length - 1) return;
-    const timer = window.setTimeout(() => {
-      if (step + 1 >= rows.length - 1) setPlaying(false);
-      onStepChange(step + 1);
-    }, STEP_MS);
-    return () => window.clearTimeout(timer);
-  }, [playing, rows, step, onStepChange]);
-
-  function togglePlay() {
-    if (!rows) return;
-    if (isPlaying) {
-      setPlaying(false);
-      return;
-    }
-    if (index >= last) onStepChange(0);
-    setPlaying(true);
-  }
 
   const geometry = useMemo(
     () => (portrait ? portraitGeometry(scenario.actors.length) : landscapeGeometry(scenario.actors.length)),
     [portrait, scenario.actors.length],
   );
-  const { smallText, shield, target } = geometry;
-  const actorIndex = new Map(scenario.actors.map((actor, i) => [actor.id, i]));
+  const { viewW, viewH, shield, target } = geometry;
+
+  // Fit the fixed-size stage into the available width. Never scales up.
+  useEffect(() => {
+    const element = stageRef.current;
+    if (!element) return;
+    const update = () => {
+      const width = element.clientWidth;
+      if (width > 0) setScale(Math.min(1, width / viewW));
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [viewW]);
+
+  // Autoplay: one step every PLAY_MS. Stops itself on the summary.
+  useEffect(() => {
+    if (!playing || !rows || step >= last) return;
+    const timer = window.setTimeout(() => {
+      if (step + 1 >= last) setPlaying(false);
+      onStepChange(step + 1);
+    }, PLAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [playing, rows, step, last, onStepChange]);
+
+  function togglePlay() {
+    if (!rows) return;
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (step < 1 || step >= last) onStepChange(1);
+    setPlaying(true);
+  }
 
   // Active defenses: toggles that are on, numbers above zero, enums set to anything but "none".
   const enabledToggles = scenario.controls.flatMap((control) => {
@@ -314,23 +299,16 @@ export default function NetworkDiagram({
     return Number(value) > 0 ? [control.label] : [];
   });
 
+  const actorIndex = new Map(scenario.actors.map((actor, i) => [actor.id, i]));
   const activeSlot = row ? (geometry.actors[actorIndex.get(row.actorId) ?? 0] ?? null) : null;
   const blocked = row?.outcome === "bloqueado";
-  const color = row ? PACKET_COLOR[row.outcome] : undefined;
+  const route = activeSlot ? (blocked ? activeSlot.blocked : activeSlot.delivered) : "";
+  const motionKey = `${index}-${replay}`;
 
-  const targetPalette = !row
-    ? PALETTE.target
-    : row.outcome === "permitido"
-      ? PALETTE.targetPermitido
-      : row.outcome === "detectado"
-        ? PALETTE.targetDetectado
-        : row.outcome === "no_detectado"
-          ? PALETTE.targetNoDetectado
-          : PALETTE.target;
-
-  const label = row
-    ? `Paso ${index + 1} de ${rows?.length ?? 0}: ${row.actorName} (${ROLE_LABEL[row.role]}) desde ${originOf(row)}, resultado: ${OUTCOME_LABEL[row.outcome]}. Destino: ${scenario.wording.targetLabel}.`
-    : `Diagrama de red del escenario. ${scenario.wording.targetLabel} todavía sin tráfico.`;
+  const label =
+    row && rows
+      ? `Paso ${index + 1} de ${rows.length}: ${row.actorName} (${ROLE_LABEL[row.role]}) desde ${originOf(row)}, resultado: ${OUTCOME_LABEL[row.outcome]}. Destino: ${scenario.wording.targetLabel}.`
+      : `Diagrama de red del escenario. ${scenario.wording.targetLabel} todavía sin tráfico.`;
 
   const targetLines = wrap(scenario.wording.targetLabel, 18, 2);
   const shieldLines = enabledToggles.length
@@ -338,263 +316,148 @@ export default function NetworkDiagram({
     : ["Ninguna activa"];
   const shieldMore = enabledToggles.length - 3;
 
-  const endPoint = blocked ? geometry.blockPoint : geometry.targetEntry;
-
   return (
     <div data-diagram className="flex flex-col gap-3">
-      <svg
-        viewBox={`0 0 ${geometry.viewW} ${geometry.viewH}`}
+      <div
+        ref={stageRef}
         role="img"
         aria-label={label}
-        className="block h-auto w-full max-w-full"
+        className="relative w-full overflow-hidden"
+        style={{ height: viewH * scale }}
       >
-        <defs>
-          <pattern id={gridId} width="24" height="24" patternUnits="userSpaceOnUse">
-            <path d="M 24 0 L 0 0 0 24" fill="none" style={{ stroke: PALETTE.paper.stroke }} strokeWidth="1" />
-          </pattern>
-          <filter id={shadowId} x="-20%" y="-20%" width="140%" height="160%">
-            <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#1d1b18" floodOpacity="0.18" />
-          </filter>
-        </defs>
+        <div
+          aria-hidden="true"
+          className="gridpaper absolute top-0 left-0 overflow-hidden rounded-xl"
+          style={{ width: viewW, height: viewH, transform: `scale(${scale})`, transformOrigin: "0 0" }}
+        >
+          <svg
+            aria-hidden="true"
+            width={viewW}
+            height={viewH}
+            viewBox={`0 0 ${viewW} ${viewH}`}
+            className="absolute top-0 left-0 overflow-visible"
+          >
+            {scenario.actors.map((actor, i) => (
+              <path key={`edge-${actor.id}`} d={geometry.actors[i].blocked} className="edge" />
+            ))}
+            <path d={geometry.throughPath} className="edge" />
+            {route ? <path d={route} className="edge edge-on" /> : null}
+          </svg>
 
-        <g aria-hidden="true">
-          <rect width={geometry.viewW} height={geometry.viewH} rx={16} style={{ fill: PALETTE.paper.fill }} />
-          <rect width={geometry.viewW} height={geometry.viewH} rx={16} fill={`url(#${gridId})`} opacity={0.7} />
-
-          {/* Dashed connectors: every actor to the shield, the shield to the target. */}
           {scenario.actors.map((actor, i) => {
             const slot = geometry.actors[i];
-            const isActive = row?.actorId === actor.id;
-            const style: CSSProperties = isActive
-              ? { stroke: color }
-              : { stroke: PALETTE.idle.stroke };
+            const active = row?.actorId === actor.id;
+            // "Ana, administradora de la oficina" -> "Ana": full names live in the step panel.
+            const names = wrap(actor.name.split(",")[0], 17, 2);
             return (
-              <path
-                key={`edge-${actor.id}`}
-                className="diagram-edge"
-                d={slot.blocked}
-                fill="none"
-                style={style}
-                strokeWidth={isActive ? 2.5 : 1.5}
-                strokeDasharray={isActive ? undefined : "6 6"}
-                opacity={row && !isActive ? 0.45 : 1}
-              />
+              <div
+                key={actor.id}
+                data-node="actor"
+                data-actor-id={actor.id}
+                data-name={actor.name}
+                data-active={active ? "true" : undefined}
+                className={`node ${actor.role === "atacante" ? "node-r" : "node-g"}${row && !active ? " node-dim" : ""}`}
+                style={{ left: slot.box.x, top: slot.box.y, width: slot.box.w, height: slot.box.h }}
+              >
+                {names.map((line, lineIndex) => (
+                  <span key={lineIndex} className="block text-[13px] leading-tight font-bold">
+                    {line}
+                  </span>
+                ))}
+                <span className="mt-1 text-[11px] opacity-85">{ROLE_LABEL[actor.role]}</span>
+              </div>
             );
           })}
-          <path
-            className="diagram-edge"
-            d={geometry.throughPath}
-            fill="none"
-            style={{ stroke: PALETTE.idle.stroke }}
-            strokeWidth={1.5}
-            strokeDasharray="6 6"
-          />
-        </g>
 
-        {scenario.actors.map((actor, i) => {
-          const slot = geometry.actors[i];
-          const palette = PALETTE[actor.role];
-          const active = row?.actorId === actor.id;
-          const nameLines = wrap(actor.name, 20, 2);
-          const cx = slot.box.x + slot.box.w / 2;
-          const cy = slot.box.y + slot.box.h / 2;
-          return (
-            <g
-              key={actor.id}
-              data-node="actor"
-              data-actor-id={actor.id}
-              data-active={active ? "true" : undefined}
-            >
-              <title>{`${actor.name} (${ROLE_LABEL[actor.role]})`}</title>
-              <NodeBox
-                x={slot.box.x}
-                y={slot.box.y}
-                w={slot.box.w}
-                h={slot.box.h}
-                palette={row ? palette : PALETTE.idle}
-                strong={active}
-                shadowId={shadowId}
-              />
-              <g aria-hidden="true">
-                <text x={cx} y={cy - 10} textAnchor="middle" className="fill-ink text-xs font-bold">
-                  {nameLines.map((line, lineIndex) => (
-                    <tspan key={lineIndex} x={cx} dy={lineIndex === 0 ? 0 : 14}>
-                      {line}
-                    </tspan>
-                  ))}
-                </text>
-                <text x={cx} y={cy + 20} textAnchor="middle" className="fill-muted" fontSize={smallText}>
-                  {ROLE_LABEL[actor.role]}
-                </text>
-              </g>
-            </g>
-          );
-        })}
-
-        <g data-node="shield" aria-hidden="true">
-          <title>Tu configuración activa</title>
-          <NodeBox
-            x={shield.x}
-            y={shield.y}
-            w={shield.w}
-            h={shield.h}
-            palette={PALETTE.shield}
-            shadowId={shadowId}
-          />
-          <text x={shield.x + shield.w / 2} y={shield.y + 26} textAnchor="middle" className="fill-ink text-xs font-bold">
-            Tu configuración
-          </text>
-          {shieldLines.map((line, i) => (
-            <text key={i} x={shield.x + shield.w / 2} y={shield.y + 50 + i * 16} textAnchor="middle" fontSize={smallText} className="fill-ink">
-              {line}
-            </text>
-          ))}
-          {shieldMore > 0 ? (
-            <text x={shield.x + shield.w / 2} y={shield.y + 50 + 3 * 16} textAnchor="middle" fontSize={smallText} className="fill-muted">
-              {`+${shieldMore} más`}
-            </text>
-          ) : null}
-        </g>
-
-        <g data-node="target" aria-hidden="true">
-          <title>{scenario.wording.targetLabel}</title>
-          {row && row.outcome === "detectado" ? (
-            <rect
-              x={target.x - 7}
-              y={target.y - 7}
-              width={target.w + 14}
-              height={target.h + 14}
-              rx={20}
-              fill="none"
-              style={{ stroke: PALETTE.targetDetectado.stroke }}
-              strokeWidth={3}
-            />
-          ) : null}
-          <NodeBox
-            x={target.x}
-            y={target.y}
-            w={target.w}
-            h={target.h}
-            palette={targetPalette}
-            shadowId={shadowId}
-          />
-          <text x={target.x + target.w / 2} y={target.y + target.h / 2 - 12} textAnchor="middle" className="fill-ink text-sm font-bold">
-            {targetLines.map((line, i) => (
-              <tspan key={i} x={target.x + target.w / 2} dy={i === 0 ? 0 : 16}>
+          <div
+            data-node="shield"
+            className="node node-l"
+            style={{ left: shield.x, top: shield.y, width: shield.w, height: shield.h }}
+          >
+            <span className="text-[13px] leading-tight font-extrabold">Tu configuración</span>
+            {shieldLines.map((line, lineIndex) => (
+              <span key={lineIndex} className="text-[11px] leading-snug">
                 {line}
-              </tspan>
+              </span>
             ))}
-          </text>
-          <text x={target.x + target.w / 2} y={target.y + target.h / 2 + 26} textAnchor="middle" fontSize={smallText} className="fill-muted">
-            Destino
-          </text>
-        </g>
+            {shieldMore > 0 ? <span className="text-[11px] opacity-85">{`+${shieldMore} más`}</span> : null}
+          </div>
 
-        {row && activeSlot !== null ? (
-          <g aria-hidden="true">
-            {/* Edge label: origin and count of the current step. */}
-            <g>
-              <rect
-                x={activeSlot.label.x - 46}
-                y={activeSlot.label.y - 17}
-                width={92}
-                height={34}
-                rx={6}
-                style={{ fill: PALETTE.paper.fill, stroke: PALETTE.idle.stroke }}
-              />
-              <text x={activeSlot.label.x} y={activeSlot.label.y - 3} textAnchor="middle" fontSize={smallText} className="fill-ink font-mono font-bold">
-                {originOf(row)}
-              </text>
-              <text x={activeSlot.label.x} y={activeSlot.label.y + 10} textAnchor="middle" fontSize={smallText} className="fill-muted">
-                {`×${row.count} ${row.count === 1 ? "evento" : "eventos"}`}
-              </text>
-            </g>
+          <div
+            data-node="target"
+            data-name={scenario.wording.targetLabel}
+            className={`node ${row ? TARGET_CLASS[row.outcome] : "node-t"}`}
+            style={{ left: target.x, top: target.y, width: target.w, height: target.h }}
+          >
+            {targetLines.map((line, lineIndex) => (
+              <span key={lineIndex} className="block text-[13px] leading-tight font-bold">
+                {line}
+              </span>
+            ))}
+            <span className="mt-1 text-[11px] opacity-85">Destino</span>
+          </div>
 
-            {blocked ? (
-              <g transform={`translate(${geometry.blockPoint.x}, ${geometry.blockPoint.y})`}>
-                <circle r={11} style={{ fill: PALETTE.target.stroke }} />
-                <text y={4} textAnchor="middle" fontSize={12} fontWeight={700} style={{ fill: PALETTE.paper.fill }}>
+          {row && activeSlot ? (
+            // Keyed by step and replay: a new step or "Repetir paso" remounts the packet.
+            <div key={motionKey} aria-hidden="true" className="pointer-events-none absolute inset-0">
+              {[`packet ${PACKET_CLASS[row.outcome]}`, `packet trail1 ${PACKET_CLASS[row.outcome]}`, `packet trail2 ${PACKET_CLASS[row.outcome]}`].map(
+                (className) => (
+                  <span key={className} className={className} style={{ offsetPath: `path("${route}")` }} />
+                ),
+              )}
+              {blocked ? (
+                <span
+                  className="stopx text-sm font-bold"
+                  style={{ left: geometry.blockPoint.x, top: geometry.blockPoint.y }}
+                >
                   ✕
-                </text>
-              </g>
-            ) : null}
-
-            {reducedMotion ? (
-              <circle
-                cx={endPoint.x}
-                cy={endPoint.y}
-                r={PACKET_RADIUS}
-                style={{ fill: color, stroke: PALETTE.paper.fill }}
-                strokeWidth={2}
-              />
-            ) : (
-              <circle
-                key={`${index}-${replay}`}
-                cx={activeSlot.anchor.x}
-                cy={activeSlot.anchor.y}
-                r={PACKET_RADIUS}
-                style={{ fill: color, stroke: PALETTE.paper.fill }}
-                strokeWidth={2}
-              >
-                <animateMotion
-                  dur={`${PACKET_MS}ms`}
-                  fill="freeze"
-                  {...PACKET_SPLINE}
-                  {...{ path: blocked ? activeSlot.blocked : activeSlot.delivered }}
+                </span>
+              ) : (
+                <span
+                  className="ring"
+                  style={{
+                    left: target.x - 6,
+                    top: target.y - 6,
+                    width: target.w + 12,
+                    height: target.h + 12,
+                    borderColor: RING_COLOR[row.outcome],
+                  }}
                 />
-              </circle>
-            )}
-          </g>
-        ) : null}
-      </svg>
+              )}
+              <div
+                className="absolute"
+                style={{
+                  left: activeSlot.label.x,
+                  top: activeSlot.label.y,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <span className="elabel">{`${originOf(row)} · ${formatClock(row.tStart)}`}</span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
 
-      {row === null ? (
+      {rows === null ? (
         <p className="text-center text-sm text-muted">Simulá para ver el tráfico</p>
+      ) : row === null ? (
+        <p className="text-center text-sm text-muted">Pulsa Siguiente para ver el tráfico</p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn btn-secondary flex-1" disabled={!rows} onClick={() => setReplay((n) => n + 1)}>
-          Repetir
+        <button
+          type="button"
+          className="btn btn-secondary flex-1"
+          disabled={!row}
+          onClick={() => setReplay((n) => n + 1)}
+        >
+          Repetir paso
         </button>
         <button type="button" className="btn btn-secondary flex-1" disabled={!rows} onClick={togglePlay}>
-          {isPlaying ? "Pausar" : "Reproducir"}
+          {playing ? "Pausar" : "Reproducir partida"}
         </button>
       </div>
     </div>
-  );
-}
-
-function NodeBox({
-  x,
-  y,
-  w,
-  h,
-  palette,
-  strong = false,
-  shadowId,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  palette: { fill: string; stroke: string };
-  strong?: boolean;
-  shadowId: string;
-}) {
-  return (
-    <g>
-      {/* Thin slab under the box: a pseudo-isometric depth cue. */}
-      <rect x={x} y={y + 5} width={w} height={h} rx={14} style={{ fill: palette.stroke }} opacity={0.25} />
-      <rect
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        rx={14}
-        style={{ fill: palette.fill, stroke: palette.stroke }}
-        strokeWidth={strong ? 3 : 1.5}
-        filter={`url(#${shadowId})`}
-      />
-    </g>
   );
 }

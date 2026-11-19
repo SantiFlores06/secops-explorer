@@ -14,7 +14,8 @@ function renderResults(slug: string, seed: number) {
   if (!scenario) throw new Error(`missing scenario ${slug}`);
   const comparison = compareWithOptimal(scenario, defaultConfig(scenario), seed);
   const rows = summarizeEvents(comparison.yours.events);
-  render(<ResultsView scenario={scenario} comparison={comparison} />);
+  // The event table lives in the summary, the step after the last event.
+  render(<ResultsView scenario={scenario} comparison={comparison} step={rows.length + 1} />);
   return { rows };
 }
 

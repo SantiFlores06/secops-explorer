@@ -285,8 +285,18 @@ function describeMailRow(row: TimelineRow): string {
   return `${row.count} mensajes ${received ? "recibidos" : "rechazados"} ${origin}.`;
 }
 
+function describeWebRow(row: TimelineRow): string {
+  const received = row.outcome !== "bloqueado";
+  const verb = received ? "cargada" : "bloqueada";
+  if (row.count === 1) return `Petición ${verb} desde ${row.ip}.`;
+  const origin =
+    row.ipCount === 1 ? `desde ${row.ip}` : `desde ${row.ipCount} direcciones distintas`;
+  return `${row.count} peticiones ${received ? "cargadas" : "bloqueadas"} ${origin}.`;
+}
+
 function describeRow(row: TimelineRow): string {
   if (row.action === "enviar_correo") return describeMailRow(row);
+  if (row.action === "visitar_web") return describeWebRow(row);
   const method = ACTION_LABEL[row.action];
   const entered = row.outcome !== "bloqueado";
   let text: string;

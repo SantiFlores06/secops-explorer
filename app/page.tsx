@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { trackLabel } from "@/components/scenario/labels";
 import { listScenarios } from "@/lib/scenarios";
 
 const STEPS = [
@@ -72,7 +73,7 @@ export default function Home() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <span className="chip chip-amber">Configurar</span>
-                <span className="chip chip-lavender">{scenario.track}</span>
+                <span className="chip chip-lavender">{trackLabel(scenario.track)}</span>
               </div>
               <p className="text-sm leading-6 text-ink">{scenario.summary}</p>
               <p className="text-xs leading-5 break-words text-muted">

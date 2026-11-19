@@ -34,6 +34,27 @@
   color-scheme: light;
 }
 
+/* Phone platform layer: no gray tap flash, no double-tap zoom delay on controls. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* Inputs under 16px make iOS Safari zoom the page on focus. Keep 16px on phones. */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea,
+  .field {
+    font-size: 16px;
+  }
+}
+
 body {
   background: var(--color-base);
   color: var(--color-ink);
@@ -142,15 +163,45 @@ h3 {
   padding: 0 0.1em;
 }
 
-/* Color and border changes fade only when motion is allowed. */
+/* Press feedback and color changes move only when motion is allowed. */
 @media (prefers-reduced-motion: no-preference) {
   .btn {
+    user-select: none;
     transition:
+      transform 120ms ease-out,
       background-color 150ms ease-out,
       border-color 150ms ease-out,
       color 150ms ease-out,
       filter 150ms ease-out;
   }
+
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .stepper-dot {
+    transition:
+      transform 120ms ease-out,
+      background-color 150ms ease-out,
+      border-color 150ms ease-out;
+  }
+
+  .stepper-dot:active {
+    transform: scale(0.92);
+  }
+
+  /* Connectors and labels in the network diagram ease to their new state. */
+  .diagram-edge {
+    transition:
+      stroke 200ms ease-out,
+      opacity 200ms ease-out;
+  }
+}
+
+/* Right-edge fade on the stepper while more steps are hidden past the edge. */
+.stepper-fade {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
 }
 
 /* Timeline rows fade in one after another; skipped for people who prefer less motion. */

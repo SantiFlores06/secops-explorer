@@ -69,13 +69,15 @@ export default function ResultsView({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [lastStep, step, setStep]);
 
-  // Keep the current step visible inside the stepper's own horizontal scroll box.
+  // Keep the current step centered inside the stepper's own horizontal scroll box.
   useEffect(() => {
     const container = stepperRef.current;
     const button = container?.querySelector<HTMLElement>(`[data-step="${step}"]`);
     if (!container || !button) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
     container.scrollTo?.({
       left: button.offsetLeft - container.clientWidth / 2 + button.clientWidth / 2,
+      behavior: reduceMotion ? "auto" : "smooth",
     });
   }, [step]);
 
@@ -196,6 +198,23 @@ function StepperCard({
   onGoTo: (index: number) => void;
   containerRef: RefObject<HTMLDivElement | null>;
 }) {
+  // True while steps are hidden past the right edge: the edge fades to hint at them.
+  const [hasMoreEnd, setHasMoreEnd] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const update = () =>
+      setHasMoreEnd(container.scrollLeft + container.clientWidth < container.scrollWidth - 4);
+    update();
+    container.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      container.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [containerRef, rows.length]);
+
   return (
     <section
       aria-labelledby="en-esta-partida"
@@ -214,9 +233,11 @@ function StepperCard({
         role="region"
         aria-labelledby="en-esta-partida"
         tabIndex={0}
-        className="relative overflow-x-auto pb-1"
+        className={`stepper-scroll relative overflow-x-auto overscroll-x-contain pb-1 ${
+          hasMoreEnd ? "stepper-fade" : ""
+        }`}
       >
-        <ol className="flex min-w-max items-center py-2">
+        <ol className="flex min-w-max items-center py-2 pr-10">
           {rows.map((row, index) => {
             const current = index === step;
             const reached = index <= step;
@@ -235,7 +256,7 @@ function StepperCard({
                   aria-label={`Paso ${index + 1}: ${title}`}
                   aria-current={current ? "step" : undefined}
                   onClick={() => onGoTo(index)}
-                  className={`grid size-10 shrink-0 place-items-center rounded-full border-2 text-sm font-bold tabular-nums ${
+                  className={`stepper-dot grid size-10 shrink-0 place-items-center rounded-full border-2 text-sm font-bold tabular-nums ${
                     current
                       ? "border-green-ink bg-green text-green-ink"
                       : reached

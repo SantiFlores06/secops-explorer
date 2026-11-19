@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { Comparison } from "@/lib/engine/compare";
 import { formatClock, summarizeEvents, type TimelineRow } from "@/lib/engine/summary";
-import type { ControlValue, Scenario, Wording } from "@/lib/engine/types";
+import type { ControlValue, Scenario } from "@/lib/engine/types";
 import {
   ACTION_LABEL,
-  ATTACKER_STATUS_LABEL,
   OUTCOME_CHIP,
   OUTCOME_LABEL,
   ROLE_LABEL,
   VALENCE_STYLE,
-  attackerValence,
   valenceOf,
 } from "./labels";
 
@@ -19,17 +17,18 @@ interface ResultsViewProps {
   /** Optional: the player passes the rows it already built for the diagram. */
   rows?: TimelineRow[];
   /**
-   * Optional: when the player owns the step (to drive the network diagram), it passes
-   * `step` and `onStepChange`. Without them the view keeps its own step.
+   * Stepper index of the panel: 1..rows.length is an event, rows.length + 1 is the summary.
+   * Without it the view keeps its own step, starting at the first event.
    */
   step?: number;
   onStepChange?: (step: number) => void;
+  /** The summary's "Configurar de nuevo" action. */
+  onConfigure?: () => void;
 }
 
 /**
- * The sections of one run. They are direct children of the player's grid, so each
- * one places itself (desktop) and orders itself (phone). The player keys this by run,
- * so the step starts over every time the scenario is simulated again.
+ * The side panel after a run: one card per event, then the summary. The player keys it by
+ * run, so the step starts over every time the scenario is simulated again.
  */
 export default function ResultsView({
   scenario,
@@ -37,20 +36,21 @@ export default function ResultsView({
   rows: rowsProp,
   step: controlledStep,
   onStepChange,
+  onConfigure,
 }: ResultsViewProps) {
   const rows = rowsProp ?? summarizeEvents(comparison.yours.events);
-  const [localStep, setLocalStep] = useState(0);
+  const summaryStep = rows.length + 1;
+  const [localStep, setLocalStep] = useState(1);
   const isControlled = controlledStep !== undefined;
-  const step = controlledStep ?? localStep;
-  const stepperRef = useRef<HTMLDivElement>(null);
-  const lastStep = rows.length - 1;
+  const step = Math.min(Math.max(controlledStep ?? localStep, 1), summaryStep);
 
   const setStep = useCallback(
     (next: number) => {
-      if (!isControlled) setLocalStep(next);
-      onStepChange?.(next);
+      const clamped = Math.min(Math.max(next, 1), summaryStep);
+      if (!isControlled) setLocalStep(clamped);
+      onStepChange?.(clamped);
     },
-    [isControlled, onStepChange],
+    [isControlled, onStepChange, summaryStep],
   );
 
   useEffect(() => {
@@ -62,51 +62,34 @@ export default function ResultsView({
         return;
       }
       event.preventDefault();
-      const delta = event.key === "ArrowRight" ? 1 : -1;
-      setStep(Math.max(0, Math.min(step + delta, lastStep)));
+      setStep(step + (event.key === "ArrowRight" ? 1 : -1));
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lastStep, step, setStep]);
-
-  // Keep the current step centered inside the stepper's own horizontal scroll box.
-  useEffect(() => {
-    const container = stepperRef.current;
-    const button = container?.querySelector<HTMLElement>(`[data-step="${step}"]`);
-    if (!container || !button) return;
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
-    container.scrollTo?.({
-      left: button.offsetLeft - container.clientWidth / 2 + button.clientWidth / 2,
-      behavior: reduceMotion ? "auto" : "smooth",
-    });
-  }, [step]);
+  }, [step, setStep]);
 
   if (rows.length === 0) return null;
 
-  const goTo = (index: number) => setStep(Math.max(0, Math.min(index, lastStep)));
-
-  return (
-    <>
-      <StepPanel scenario={scenario} rows={rows} step={step} onGoTo={goTo} />
-      <StepperCard
+  if (step > rows.length) {
+    return (
+      <SummaryPanel
         scenario={scenario}
+        comparison={comparison}
         rows={rows}
-        step={step}
-        onGoTo={goTo}
-        containerRef={stepperRef}
+        onBack={() => setStep(rows.length)}
+        onConfigure={onConfigure}
       />
-      <ScoreSection comparison={comparison} wording={scenario.wording} />
-      <ComparisonSection scenario={scenario} comparison={comparison} />
-      <TimelineSection scenario={scenario} rows={rows} />
-    </>
-  );
+    );
+  }
+
+  return <StepPanel key={step} scenario={scenario} rows={rows} step={step} onGoTo={setStep} />;
 }
 
 function stepTitle(scenario: Scenario, row: TimelineRow): string {
   return scenario.explanations[row.explanationKey]?.title ?? row.explanationKey;
 }
 
-/** The current event in full: outcome, what happened, why, and the good practice. */
+/** One event in full: outcome, what happened, why, and the good practice. */
 function StepPanel({
   scenario,
   rows,
@@ -118,19 +101,17 @@ function StepPanel({
   step: number;
   onGoTo: (index: number) => void;
 }) {
-  const row = rows[step];
+  const row = rows[step - 1];
   const explanation = scenario.explanations[row.explanationKey];
-  const next = rows[step + 1];
+  const next = rows[step];
+  const nextTitle = next ? stepTitle(scenario, next) : "Resumen";
   const style = VALENCE_STYLE[valenceOf(row.role, row.outcome, row.credential)];
 
   return (
-    <section
-      aria-labelledby="paso-titulo"
-      className="card order-3 flex flex-col gap-4 p-5 lg:col-start-2 lg:row-start-1 lg:row-span-2"
-    >
+    <section aria-labelledby="paso-titulo" className="card gi flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="label-caps">
-          Paso {step + 1} / {rows.length}
+          Paso {step} / {rows.length} <span className="tabular-nums">· {formatClock(row.tStart)}</span>
         </p>
         <span className={`chip ${OUTCOME_CHIP[row.outcome]}`}>
           <span className="sr-only">{style.meaning}: </span>
@@ -161,7 +142,7 @@ function StepPanel({
         <button
           type="button"
           className="btn btn-secondary"
-          disabled={step === 0}
+          disabled={step <= 1}
           onClick={() => onGoTo(step - 1)}
         >
           ← Atrás
@@ -169,214 +150,100 @@ function StepPanel({
         <button
           type="button"
           className="btn btn-primary flex-1"
-          disabled={!next}
           onClick={() => onGoTo(step + 1)}
         >
-          {next ? `Siguiente: ${stepTitle(scenario, next)} →` : "Último paso"}
+          {`Siguiente: ${nextTitle} →`}
         </button>
       </div>
-      <p className="text-xs text-muted">
-        <kbd className="rounded border border-line-strong bg-field px-1.5 font-bold text-ink">←</kbd>{" "}
-        <kbd className="rounded border border-line-strong bg-field px-1.5 font-bold text-ink">→</kbd>{" "}
-        cambian de paso
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        <span className="kbd">←</span>
+        <span className="kbd">→</span> cambian de paso
       </p>
     </section>
   );
 }
 
-/** One circle per timeline row, joined by a line. Scrolls sideways when there are many. */
-function StepperCard({
+/** The consequence of the run: your score against the recommended one, and what changes. */
+function SummaryPanel({
   scenario,
+  comparison,
   rows,
-  step,
-  onGoTo,
-  containerRef,
+  onBack,
+  onConfigure,
 }: {
   scenario: Scenario;
+  comparison: Comparison;
   rows: TimelineRow[];
-  step: number;
-  onGoTo: (index: number) => void;
-  containerRef: RefObject<HTMLDivElement | null>;
+  onBack: () => void;
+  onConfigure?: () => void;
 }) {
-  // True while steps are hidden past the right edge: the edge fades to hint at them.
-  const [hasMoreEnd, setHasMoreEnd] = useState(false);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const update = () =>
-      setHasMoreEnd(container.scrollLeft + container.clientWidth < container.scrollWidth - 4);
-    update();
-    container.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      container.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [containerRef, rows.length]);
-
+  const { yours, optimal, differences, gap } = comparison;
   return (
-    <section
-      aria-labelledby="en-esta-partida"
-      className="card order-5 flex flex-col gap-3 p-5 lg:col-start-1 lg:row-start-3"
-    >
+    <section aria-labelledby="resumen-titulo" className="card gi flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="en-esta-partida" className="label-caps">
-          En esta partida
-        </h2>
-        <p className="label-caps tabular-nums">
-          Paso {step + 1} de {rows.length}
-        </p>
+        <p className="label-caps">Resumen</p>
+        <span className="chip chip-green">Partida completa</span>
       </div>
-      <div
-        ref={containerRef}
-        role="region"
-        aria-labelledby="en-esta-partida"
-        tabIndex={0}
-        className={`stepper-scroll relative overflow-x-auto overscroll-x-contain pb-1 ${
-          hasMoreEnd ? "stepper-fade" : ""
-        }`}
-      >
-        <ol className="flex min-w-max items-center py-2 pr-10">
-          {rows.map((row, index) => {
-            const current = index === step;
-            const reached = index <= step;
-            const title = stepTitle(scenario, row);
-            return (
-              <li key={row.key} className="flex items-center">
-                {index > 0 ? (
-                  <span
-                    aria-hidden="true"
-                    className={`h-0.5 w-8 sm:w-12 ${reached ? "bg-green-ink" : "bg-line-strong"}`}
-                  />
-                ) : null}
-                <button
-                  type="button"
-                  data-step={index}
-                  aria-label={`Paso ${index + 1}: ${title}`}
-                  aria-current={current ? "step" : undefined}
-                  onClick={() => onGoTo(index)}
-                  className={`stepper-dot grid size-10 shrink-0 place-items-center rounded-full border-2 text-sm font-bold tabular-nums ${
-                    current
-                      ? "border-green-ink bg-green text-green-ink"
-                      : reached
-                        ? "border-green-ink bg-lavender text-lavender-ink"
-                        : "border-line-strong bg-field text-ink"
-                  }`}
-                >
-                  {index + 1}
-                </button>
+      <h2 id="resumen-titulo" className="text-xl leading-tight sm:text-2xl">
+        Resumen de la partida
+      </h2>
+
+      <dl className="grid grid-cols-2 gap-3">
+        <div className="rounded-control border border-line bg-field p-3">
+          <dt className="label-caps">Tu puntaje</dt>
+          <dd className="mt-1 text-3xl font-extrabold tabular-nums">{yours.score.total}</dd>
+        </div>
+        <div className="rounded-control border border-green-ink bg-green p-3 text-green-ink">
+          <dt className="label-caps text-green-ink">Recomendada</dt>
+          <dd className="mt-1 text-3xl font-extrabold tabular-nums">{optimal.score.total}</dd>
+        </div>
+      </dl>
+
+      <p className="text-sm leading-6">
+        {gap === 0
+          ? "Igualas el puntaje de la configuración recomendada, con la misma semilla."
+          : `Te faltan ${gap} ${gap === 1 ? "punto" : "puntos"} para igualar a la configuración recomendada, con la misma semilla.`}
+      </p>
+
+      <div className="flex flex-col gap-2">
+        <p className="label-caps">Qué cambia en la recomendada</p>
+        {differences.length > 0 ? (
+          <ul className="flex flex-col gap-1 border-l-2 border-line-strong pl-3 text-sm leading-6">
+            {differences.map((difference) => (
+              <li key={difference.controlId}>
+                <span className="font-bold">{difference.label}:</span> tú{" "}
+                {formatValue(scenario, difference.controlId, difference.yours)}, recomendada{" "}
+                {formatValue(scenario, difference.controlId, difference.optimal)}.
               </li>
-            );
-          })}
-        </ol>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm leading-6">Tu configuración ya coincide con la recomendada.</p>
+        )}
+      </div>
+
+      <details className="overflow-hidden rounded-control border border-line">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 font-bold">
+          Ver todos los eventos
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-line p-3">
+          <p className="text-xs leading-5 text-muted">
+            La actividad de los atacantes se agrupa por resultado y motivo; la del equipo legítimo
+            aparece evento por evento.
+          </p>
+          <EventsTable scenario={scenario} rows={rows} />
+        </div>
+      </details>
+
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn btn-secondary" onClick={onBack}>
+          ← Atrás
+        </button>
+        <button type="button" className="btn btn-primary flex-1" onClick={onConfigure}>
+          Configurar de nuevo
+        </button>
       </div>
     </section>
-  );
-}
-
-/** The decision's consequence: the three axes, and who got in or was blocked. */
-function ScoreSection({ comparison, wording }: { comparison: Comparison; wording: Wording }) {
-  const { score } = comparison.yours;
-  return (
-    <section
-      aria-labelledby="resultado"
-      className="card order-6 overflow-hidden lg:col-start-1 lg:row-start-4"
-    >
-      <div className="border-b border-line px-5 py-3">
-        <h2 id="resultado" className="label-caps">
-          Resultado
-        </h2>
-      </div>
-
-      <div className="grid grid-cols-1 gap-px bg-line sm:grid-cols-3">
-        <ScoreBar
-          label="Seguridad"
-          value={score.security}
-          hint="Atacantes detenidos (100), detectados (50) o sin detectar (0)."
-        />
-        <ScoreBar label="Operatividad" value={score.operations} hint={wording.operationsHint} />
-        <ScoreBar
-          label="Costo operativo"
-          value={score.cost}
-          hint={`Usas ${score.costUnits} de ${score.maxCostUnits} unidades de mantenimiento.`}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-px border-t border-line bg-line sm:grid-cols-2">
-        <div className="bg-panel p-5">
-          <h3 className="label-caps">Atacantes</h3>
-          <ul className="mt-2 flex flex-col">
-            {score.attackers.map((attacker) => {
-              const style = VALENCE_STYLE[attackerValence(attacker.status)];
-              return (
-                <li
-                  key={attacker.actorId}
-                  className="flex flex-wrap items-center justify-between gap-2 border-b border-line py-2.5 last:border-b-0"
-                >
-                  <span className="font-bold">{attacker.name}</span>
-                  <span className={`chip ${style.chip}`}>
-                    <span className="sr-only">{style.meaning}: </span>
-                    {ATTACKER_STATUS_LABEL[attacker.status]}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-        <div className="bg-panel p-5">
-          <h3 className="label-caps">Equipo legítimo</h3>
-          <ul className="mt-2 flex flex-col">
-            {score.legit.map((person) => {
-              const allIn = person.permitted === person.validAttempts;
-              const style = VALENCE_STYLE[allIn ? "good" : "bad"];
-              return (
-                <li
-                  key={person.actorId}
-                  className="flex flex-wrap items-center justify-between gap-2 border-b border-line py-2.5 last:border-b-0"
-                >
-                  <span className="font-bold">{person.name}</span>
-                  <span className={`chip ${style.chip}`}>
-                    <span className="sr-only">{style.meaning}: </span>
-                    {wording.legitSummary
-                      .replace("{permitidos}", String(person.permitted))
-                      .replace("{total}", String(person.validAttempts))}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ScoreBar({ label, value, hint }: { label: string; value: number; hint: string }) {
-  const id = `barra-${label.toLowerCase().replace(/\s+/g, "-")}`;
-  return (
-    <div className="bg-panel p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-        <span id={id} className="label-caps">
-          {label}
-        </span>
-        <span className="tabular-nums">
-          <span className="text-2xl font-extrabold">{value}</span>
-          <span className="text-xs text-muted">/100</span>
-        </span>
-      </div>
-      <div
-        role="meter"
-        aria-labelledby={id}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={value}
-        className="meter-track mt-3"
-      >
-        <div className="meter-fill" style={{ width: `${value}%` }} />
-      </div>
-      <p className="mt-2 text-xs leading-5 text-muted">{hint}</p>
-    </div>
   );
 }
 
@@ -390,55 +257,6 @@ function formatValue(scenario: Scenario, controlId: string, value: ControlValue)
     return control.options.find((option) => option.value === value)?.label ?? String(value);
   }
   return value ? "activado" : "desactivado";
-}
-
-function ComparisonSection({ scenario, comparison }: ResultsViewProps) {
-  const { yours, optimal, differences, gap } = comparison;
-  return (
-    <section
-      aria-labelledby="comparacion"
-      className="card order-7 overflow-hidden lg:col-start-1 lg:row-start-5"
-    >
-      <div className="border-b border-line px-5 py-3">
-        <h2 id="comparacion" className="label-caps">
-          Tu configuración frente a la recomendada
-        </h2>
-      </div>
-      <div className="p-5">
-        <dl className="grid grid-cols-2 gap-4 sm:max-w-md">
-          <div>
-            <dt className="text-xs text-muted">Tu puntaje</dt>
-            <dd className="text-2xl font-extrabold tabular-nums">{yours.score.total}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted">Configuración recomendada</dt>
-            <dd className="text-2xl font-extrabold tabular-nums">{optimal.score.total}</dd>
-          </div>
-        </dl>
-        <p className="mt-3 leading-6">
-          {gap === 0
-            ? "Igualas el puntaje de la configuración recomendada, con la misma semilla."
-            : `Te faltan ${gap} ${gap === 1 ? "punto" : "puntos"} para igualar a la configuración recomendada, con la misma semilla.`}
-        </p>
-        {differences.length > 0 ? (
-          <details className="mt-2 text-sm">
-            <summary className="cursor-pointer py-3 font-bold text-green-ink">
-              Ver qué cambia la configuración recomendada
-            </summary>
-            <ul className="mt-1 flex flex-col gap-1 border-l-2 border-line-strong pl-3">
-              {differences.map((difference) => (
-                <li key={difference.controlId}>
-                  <span className="font-bold">{difference.label}:</span> tú{" "}
-                  {formatValue(scenario, difference.controlId, difference.yours)}, recomendada{" "}
-                  {formatValue(scenario, difference.controlId, difference.optimal)}.
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
-      </div>
-    </section>
-  );
 }
 
 function clockLabel(row: TimelineRow): string {
@@ -485,26 +303,18 @@ function describeRow(row: TimelineRow): string {
   return text;
 }
 
-/** Every event, one table row pair per event. Folded under a disclosure to keep the page short. */
-function TimelineSection({ scenario, rows }: { scenario: Scenario; rows: TimelineRow[] }) {
+/** Every event, two table rows per event. Scrolls inside its own box on narrow screens. */
+function EventsTable({ scenario, rows }: { scenario: Scenario; rows: TimelineRow[] }) {
   return (
-    <details className="card order-8 overflow-hidden lg:col-start-1 lg:row-start-6">
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-5 py-4 font-bold">
-        <span>Ver todos los eventos</span>
-        <span id="linea-de-tiempo" className="label-caps">
-          Qué pasó, minuto a minuto
-        </span>
-      </summary>
-      <p className="border-t border-line px-5 py-3 text-xs leading-5 text-muted">
-        La actividad de los atacantes se agrupa por resultado y motivo; la del equipo legítimo
-        aparece evento por evento.
+    <>
+      <p id="linea-de-tiempo" className="label-caps">
+        Qué pasó, minuto a minuto
       </p>
-      {/* Scrolls inside its own box on narrow screens; the page itself never scrolls sideways. */}
       <div
         role="region"
         aria-labelledby="linea-de-tiempo"
         tabIndex={0}
-        className="relative overflow-x-auto border-t border-line"
+        className="relative overflow-x-auto rounded-control border border-line"
       >
         <table className="w-full border-collapse text-left text-sm">
           <caption className="sr-only">Eventos de la simulación; cada evento ocupa dos filas</caption>
@@ -527,15 +337,13 @@ function TimelineSection({ scenario, rows }: { scenario: Scenario; rows: Timelin
           {rows.map((row, index) => {
             const explanation = scenario.explanations[row.explanationKey];
             const style = VALENCE_STYLE[valenceOf(row.role, row.outcome, row.credential)];
-            const enter = { "--i": Math.min(index, 20) } as React.CSSProperties;
+            const enter = { "--i": Math.min(index, 20) } as CSSProperties;
             return (
               <tbody key={row.key} className="align-top hover:bg-raised">
                 <tr className="fx-enter" style={enter}>
                   <td rowSpan={2} className="relative border-b border-line px-3 py-3">
                     <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${style.rail}`} />
-                    <span className="font-bold tabular-nums">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
+                    <span className="font-bold tabular-nums">{String(index + 1).padStart(2, "0")}</span>
                   </td>
                   <td className="hidden px-3 pt-3 font-mono whitespace-nowrap text-muted tabular-nums sm:table-cell">
                     <span className="sr-only">Minuto </span>
@@ -584,6 +392,6 @@ function TimelineSection({ scenario, rows }: { scenario: Scenario; rows: Timelin
           })}
         </table>
       </div>
-    </details>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
+import ThemeToggle from "@/components/theme-toggle";
 import "./globals.css";
 
 // Self-hosted at build time: the browser never requests fonts from Google.
@@ -33,11 +34,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <header className="border-b border-line bg-panel">
           <nav
             aria-label="Principal"
-            className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6"
+            className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6"
           >
             <Link href="/" className="text-lg font-extrabold tracking-tight text-ink">
               SecOps <span className="highlight">Explorer</span>
             </Link>
+            <ThemeToggle />
           </nav>
         </header>
         <main id="contenido" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">

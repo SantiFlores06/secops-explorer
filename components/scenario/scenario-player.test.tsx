@@ -43,11 +43,11 @@ describe("ScenarioPlayer (ssh-expuesto)", () => {
   it("shows outcome pills with text labels after pressing Simular", async () => {
     const user = userEvent.setup();
     renderPlayer("ssh-expuesto");
-    expect(screen.queryByRole("heading", { name: "Resultado" })).toBeNull();
+    expect(screen.queryByText(/^Paso 1 \//)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Simular" }));
 
-    screen.getByRole("heading", { name: "Resultado" });
+    screen.getByText(/^Paso 1 \//);
     expect(screen.getAllByText(OUTCOME_PILL).length).toBeGreaterThan(0);
   });
 
@@ -58,6 +58,8 @@ describe("ScenarioPlayer (ssh-expuesto)", () => {
     await user.click(screen.getByRole("button", { name: "Simular" }));
     const before = announcedTotal();
 
+    // Simular moves to the first event, so the controls come back through the stepper.
+    await user.click(screen.getByRole("button", { name: "Paso 0: Configurar" }));
     await user.click(screen.getByRole("switch", { name: /Permitir contraseñas/ }));
     await user.click(screen.getByRole("button", { name: "Simular" }));
     const after = announcedTotal();
@@ -75,7 +77,7 @@ describe("ScenarioPlayer (dmarc-suplantacion)", () => {
     expect(screen.queryByText("Configuración del servidor")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Simular" }));
-    screen.getByRole("heading", { name: "Resultado" });
+    screen.getByText(/^Paso 1 \//);
     expect(screen.queryByText("Configuración del servidor")).toBeNull();
   });
 
@@ -98,10 +100,31 @@ describe("ScenarioPlayer (dmarc-suplantacion)", () => {
     await user.click(screen.getByRole("button", { name: "Simular" }));
     const before = announcedTotal();
 
+    await user.click(screen.getByRole("button", { name: "Paso 0: Configurar" }));
     await user.selectOptions(screen.getByLabelText("Política DMARC"), "reject");
     await user.click(screen.getByRole("button", { name: "Simular" }));
     const after = announcedTotal();
 
     expect(after).not.toBe(before);
+  });
+});
+
+describe("ScenarioPlayer stepper", () => {
+  it("walks the stepper through every event to Resumen", async () => {
+    const user = userEvent.setup();
+    renderPlayer("ssh-expuesto");
+
+    await user.click(screen.getByRole("button", { name: "Simular" }));
+    for (let i = 0; i < 30; i += 1) {
+      const next = screen.queryByRole("button", { name: /^Siguiente/ });
+      if (!next) break;
+      await user.click(next);
+    }
+
+    expect(
+      screen.getByRole("button", { name: /^Paso \d+: Resumen$/ }).getAttribute("aria-current"),
+    ).toBe("step");
+    screen.getByRole("heading", { name: "Resumen de la partida" });
+    screen.getByText("Ver todos los eventos");
   });
 });

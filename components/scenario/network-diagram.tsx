@@ -258,7 +258,8 @@ export default function NetworkDiagram({
     if (!element) return;
     const update = () => {
       const width = element.clientWidth;
-      if (width > 0) setScale(Math.min(1, width / viewW));
+      // Fill the card: scale up on wide screens too, capped so text never gets oversized.
+      if (width > 0) setScale(Math.min(1.4, width / viewW));
     };
     update();
     if (typeof ResizeObserver === "undefined") return;

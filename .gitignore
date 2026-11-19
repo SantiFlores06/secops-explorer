@@ -42,3 +42,6 @@ next-env.d.ts
 
 #additional files
 .atl/
+# playwright
+test-results/
+playwright-report/

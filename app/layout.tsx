@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
 // Self-hosted at build time: the browser never requests fonts from Google.
-const plexMono = IBM_Plex_Mono({
-  variable: "--font-plex-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "700", "800"],
   display: "swap",
 });
 
@@ -22,11 +22,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es" className={`${plexMono.variable} h-full antialiased`}>
+    <html lang="es" className={`${jetbrainsMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-base text-ink">
         <a
           href="#contenido"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-10 focus:rounded-[2px] focus:bg-defense focus:px-4 focus:py-2 focus:font-bold focus:text-defense-ink"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-10 focus:rounded-control focus:bg-green focus:px-4 focus:py-2 focus:font-bold focus:text-green-ink"
         >
           Saltar al contenido
         </a>
@@ -35,12 +35,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             aria-label="Principal"
             className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6"
           >
-            <span aria-hidden="true" className="size-2.5 bg-defense" />
-            <Link
-              href="/"
-              className="font-bold tracking-[0.14em] text-ink uppercase hover:text-defense"
-            >
-              SecOps Explorer
+            <Link href="/" className="text-lg font-extrabold tracking-tight text-ink">
+              SecOps <span className="highlight">Explorer</span>
             </Link>
           </nav>
         </header>

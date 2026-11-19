@@ -41,26 +41,37 @@ export function attackerValence(status: AttackerStatus): Valence {
   return status === "detenido" ? "good" : status === "detectado" ? "warn" : "bad";
 }
 
-/** Tailwind classes per valence. `rail` is the row marker; `pill` is the text status. */
-export const VALENCE_STYLE: Record<Valence, { rail: string; pill: string; meaning: string }> = {
+/**
+ * Pastel chip per outcome. The text label is always shown next to the color,
+ * so the color is never the only signal.
+ */
+export const OUTCOME_CHIP: Record<Outcome, string> = {
+  permitido: "chip-green",
+  bloqueado: "chip-slate",
+  detectado: "chip-amber",
+  no_detectado: "chip-red",
+};
+
+/** Tailwind classes per valence. `rail` is the row marker; `chip` is the text status. */
+export const VALENCE_STYLE: Record<Valence, { rail: string; chip: string; meaning: string }> = {
   good: {
-    rail: "bg-defense",
-    pill: "border-defense/60 bg-defense/10 text-defense",
+    rail: "bg-green-ink",
+    chip: "chip-green",
     meaning: "Resultado favorable",
   },
   warn: {
-    rail: "bg-caution",
-    pill: "border-caution/60 bg-caution/10 text-caution",
+    rail: "bg-amber-ink",
+    chip: "chip-amber",
     meaning: "Resultado con reservas",
   },
   bad: {
-    rail: "bg-alert",
-    pill: "border-alert/60 bg-alert/10 text-alert",
+    rail: "bg-red-ink",
+    chip: "chip-red",
     meaning: "Resultado desfavorable",
   },
   neutral: {
-    rail: "bg-idle",
-    pill: "border-idle/60 bg-idle/10 text-idle",
+    rail: "bg-slate-ink",
+    chip: "chip-slate",
     meaning: "Resultado esperado",
   },
 };

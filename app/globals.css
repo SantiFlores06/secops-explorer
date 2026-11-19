@@ -1,31 +1,37 @@
 @import "tailwindcss";
 
 /*
- * Design tokens. Dark-only console. Every text token is at least 4.5:1 against
- * the panel and base backgrounds; teal is the defense/interactive color, amber
- * and red are reserved for outcome states.
+ * Light "paper lesson" theme. Status uses pastel chips with dark text; every text
+ * token keeps at least 4.5:1 against the page (#f4ebe0) and card (#f9f2e8) colors.
+ * Plain @theme (not inline) so the custom CSS below can reference the variables.
  */
-@theme inline {
-  --color-base: #0b1020;
-  --color-panel: #111a2e;
-  --color-raised: #172440;
-  --color-field: #0a1324;
-  --color-line: #22345a;
-  --color-line-strong: #3a5485;
-  --color-ink: #e4ebf7;
-  --color-muted: #9aaacb;
-  --color-defense: #2dd4a0;
-  --color-defense-hi: #5fe6bb;
-  --color-defense-ink: #03221a;
-  --color-caution: #f5b841;
-  --color-alert: #ff5c6c;
-  --color-idle: #8fa0c0;
+@theme {
+  --color-base: #f4ebe0;
+  --color-panel: #f9f2e8;
+  --color-raised: #efe5d6;
+  --color-field: #fffaf2;
+  --color-line: #ddd3c5;
+  --color-line-strong: #b9ab97;
+  --color-ink: #1d1b18;
+  --color-muted: #6f6961;
+  --color-green: #d6ebc4;
+  --color-green-ink: #2f5a1e;
+  --color-amber: #f6e1a6;
+  --color-amber-ink: #5c4000;
+  --color-lavender: #e2dcf7;
+  --color-lavender-ink: #43307f;
+  --color-slate: #d4dcec;
+  --color-slate-ink: #26406a;
+  --color-red: #f6cfc9;
+  --color-red-ink: #8a1f14;
   --font-mono:
-    var(--font-plex-mono), ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  --radius-card: 14px;
+  --radius-control: 9px;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -33,60 +39,107 @@ body {
   color: var(--color-ink);
   font-family: var(--font-mono);
   font-size: 0.875rem;
-  line-height: 1.55;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
+h1,
+h2,
+h3 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-defense-hi);
+  outline: 2px solid var(--color-green-ink);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: var(--color-defense);
-  color: var(--color-defense-ink);
+  background: var(--color-green);
+  color: var(--color-green-ink);
 }
 
 @layer components {
-  .panel {
-    @apply rounded-[2px] border border-line bg-panel;
-  }
-
-  .panel-head {
-    @apply flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line bg-raised px-4 py-2.5;
+  .card {
+    @apply rounded-card border border-line bg-panel;
+    box-shadow:
+      0 18px 40px -24px rgb(80 60 35 / 0.45),
+      inset 0 1px 0 rgb(255 255 255 / 0.8);
   }
 
   .label-caps {
-    @apply text-xs font-bold tracking-[0.14em] text-muted uppercase;
+    @apply text-xs font-bold tracking-[0.12em] text-muted uppercase;
   }
 
   .btn {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-[2px] border px-4 py-2 text-sm font-bold tracking-wide uppercase disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-control border px-4 py-2 text-sm font-bold disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply border-defense bg-defense text-defense-ink hover:border-defense-hi hover:bg-defense-hi;
+    @apply border-green-ink bg-green text-green-ink hover:brightness-95;
   }
 
   .btn-secondary {
-    @apply border-line-strong bg-field text-ink hover:border-defense hover:text-defense;
+    @apply border-line-strong bg-field text-ink hover:border-ink;
   }
 
   .field {
-    @apply min-h-11 rounded-[2px] border border-line-strong bg-field px-3 py-2 text-sm text-ink;
+    @apply min-h-11 rounded-control border border-line-strong bg-field px-3 py-2 text-sm text-ink;
   }
 
-  .pill {
-    @apply inline-flex items-center gap-1.5 rounded-[2px] border px-2 py-0.5 text-xs font-bold tracking-wide whitespace-nowrap uppercase;
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap;
+  }
+
+  .chip-green {
+    @apply bg-green text-green-ink;
+  }
+
+  .chip-amber {
+    @apply bg-amber text-amber-ink;
+  }
+
+  .chip-lavender {
+    @apply bg-lavender text-lavender-ink;
+  }
+
+  .chip-slate {
+    @apply bg-slate text-slate-ink;
+  }
+
+  .chip-red {
+    @apply bg-red text-red-ink;
   }
 
   .meter-track {
-    @apply h-2 overflow-hidden border border-line bg-field;
+    @apply h-2.5 overflow-hidden rounded-full border border-line-strong bg-field;
   }
 
   .meter-fill {
-    @apply h-full bg-defense;
+    @apply h-full bg-green-ink;
   }
+
+  /* Subtle graph-paper background for the diagram area. */
+  .paper-grid {
+    background-color: var(--color-field);
+    background-image:
+      linear-gradient(rgb(29 27 24 / 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(29 27 24 / 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}
+
+/* Marker highlight under a word, like a green highlighter stroke. */
+.highlight {
+  background-image: linear-gradient(
+    transparent 58%,
+    var(--color-green) 58%,
+    var(--color-green) 92%,
+    transparent 92%
+  );
+  padding: 0 0.1em;
 }
 
 /* Color and border changes fade only when motion is allowed. */
@@ -95,7 +148,8 @@ body {
     transition:
       background-color 150ms ease-out,
       border-color 150ms ease-out,
-      color 150ms ease-out;
+      color 150ms ease-out,
+      filter 150ms ease-out;
   }
 }
 

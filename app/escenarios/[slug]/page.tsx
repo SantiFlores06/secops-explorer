@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { trackLabel } from "@/components/scenario/labels";
 import ScenarioPlayer from "@/components/scenario/scenario-player";
 import { getScenario, listScenarios } from "@/lib/scenarios";
 
@@ -30,7 +31,7 @@ export default async function ScenarioPage({ params }: PageProps<"/escenarios/[s
       <header className="card p-5 sm:p-6">
         <nav aria-label="Ubicación" className="label-caps flex flex-wrap items-center gap-2">
           <Link href="/" className="hover:text-ink hover:underline underline-offset-4">
-            {scenario.track}
+            {trackLabel(scenario.track)}
           </Link>
           <span aria-hidden="true">/</span>
           <span className="text-ink">

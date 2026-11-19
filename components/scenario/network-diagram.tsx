@@ -349,7 +349,9 @@ export default function NetworkDiagram({
             const slot = geometry.actors[i];
             const active = row?.actorId === actor.id;
             // "Ana, administradora de la oficina" -> "Ana": full names live in the step panel.
-            const names = wrap(actor.name.split(",")[0], 17, 2);
+            const names = wrap(actor.name.split(",")[0], 15, 2);
+            // Two-line names leave no room for the role; the node color already says it.
+            const showRole = names.length === 1;
             return (
               <div
                 key={actor.id}
@@ -365,7 +367,9 @@ export default function NetworkDiagram({
                     {line}
                   </span>
                 ))}
-                <span className="mt-1 text-[11px] opacity-85">{ROLE_LABEL[actor.role]}</span>
+                {showRole ? (
+                  <span className="mt-1 text-[11px] opacity-85">{ROLE_LABEL[actor.role]}</span>
+                ) : null}
               </div>
             );
           })}

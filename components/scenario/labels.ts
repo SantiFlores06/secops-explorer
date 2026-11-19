@@ -11,7 +11,19 @@ export const ACTION_LABEL: Record<AuthAction, string> = {
   login_clave: "clave pública",
   login_password: "contraseña",
   enviar_correo: "correo",
+  visitar_web: "visita web",
 };
+
+/** Human name for a scenario track id; unknown ids fall back to the id itself. */
+const TRACK_LABEL: Record<string, string> = {
+  hardening: "Hardening",
+  correo: "Correo",
+  "web-appsec": "Web y AppSec",
+};
+
+export function trackLabel(track: string): string {
+  return TRACK_LABEL[track] ?? track;
+}
 
 export const ROLE_LABEL: Record<Role, string> = {
   legitimo: "Equipo legítimo",

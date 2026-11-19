@@ -127,4 +127,15 @@ describe("ScenarioPlayer stepper", () => {
     screen.getByRole("heading", { name: "Resumen de la partida" });
     screen.getByText("Ver todos los eventos");
   });
+
+  it("goes back from the first event to the configuration", async () => {
+    const user = userEvent.setup();
+    renderPlayer("dmarc-suplantacion");
+
+    await user.click(screen.getByRole("button", { name: "Simular" }));
+    await user.click(screen.getByRole("button", { name: /Atrás/ }));
+
+    screen.getByText("Configuración del dominio");
+    screen.getByRole("button", { name: "Simular" });
+  });
 });

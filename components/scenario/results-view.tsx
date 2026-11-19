@@ -46,11 +46,16 @@ export default function ResultsView({
 
   const setStep = useCallback(
     (next: number) => {
+      // Going back from the first event returns to step 0, the configuration.
+      if (next < 1 && onConfigure) {
+        onConfigure();
+        return;
+      }
       const clamped = Math.min(Math.max(next, 1), summaryStep);
       if (!isControlled) setLocalStep(clamped);
       onStepChange?.(clamped);
     },
-    [isControlled, onStepChange, summaryStep],
+    [isControlled, onStepChange, onConfigure, summaryStep],
   );
 
   useEffect(() => {
@@ -142,7 +147,6 @@ function StepPanel({
         <button
           type="button"
           className="btn btn-secondary"
-          disabled={step <= 1}
           onClick={() => onGoTo(step - 1)}
         >
           ← Atrás

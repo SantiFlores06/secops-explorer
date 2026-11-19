@@ -137,6 +137,8 @@ export interface Wording {
   configPanelTitle: string;
   operationsHint: string;
   legitSummary: string;
+  /** What the attacks hit, shown as the target node of the network diagram. */
+  targetLabel: string;
 }
 
 export interface Scenario {

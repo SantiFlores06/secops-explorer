@@ -100,7 +100,14 @@ describe("scenario wording", () => {
       configPanelTitle: "Configuración del servidor",
       operationsHint: "Accesos legítimos que pudieron entrar.",
       legitSummary: "Pudo entrar {permitidos} de {total} veces",
+      targetLabel: "Tu servidor",
     });
+  });
+
+  it("defaults the diagram target to the server when objetivo is missing", () => {
+    const draft = structuredClone(raw) as Draft;
+    draft.vocabulario = { panel_configuracion: "Panel de prueba" };
+    expect(parseScenario(draft).wording.targetLabel).toBe("Tu servidor");
   });
 
   it("reads the mail wording from the DMARC scenario", () => {
@@ -109,6 +116,7 @@ describe("scenario wording", () => {
     expect(scenario.wording.configPanelTitle).toBe("Configuración del dominio");
     expect(scenario.wording.operationsHint).toBe("Correo legítimo que llegó.");
     expect(scenario.wording.legitSummary).toBe("Llegó {permitidos} de {total} veces");
+    expect(scenario.wording.targetLabel).toBe("Buzones de la cooperativa");
   });
 
   it("fills the wording keys a scenario leaves out with the defaults", () => {

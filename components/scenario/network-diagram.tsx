@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import type { TimelineRow } from "@/lib/engine/summary";
 import type { Config, Outcome, Scenario } from "@/lib/engine/types";
 import { OUTCOME_LABEL, ROLE_LABEL } from "./labels";
@@ -15,8 +15,47 @@ interface NetworkDiagramProps {
   onStepChange: (step: number) => void;
 }
 
-const VIEW_W = 600;
-const VIEW_H = 380;
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface ActorSlot {
+  box: Box;
+  /** Where the packet leaves the actor. */
+  anchor: Point;
+  /** Center of the origin chip shown while the actor is active. */
+  label: Point;
+  /** Route from the actor to the shield's entry edge (used when the packet is blocked). */
+  blocked: string;
+  /** Route from the actor through the shield to the target. */
+  delivered: string;
+}
+
+interface Geometry {
+  viewW: number;
+  viewH: number;
+  /** Font size (SVG units) for secondary labels. Keeps rendered text >= 11px on phones. */
+  smallText: number;
+  actors: ActorSlot[];
+  shield: Box;
+  target: Box;
+  blockPoint: Point;
+  targetEntry: Point;
+  /** Idle dashed connector from the shield to the target. */
+  throughPath: string;
+}
+
+// Landscape: actors in a column on the left, shield in the middle, target on the right.
+const LANDSCAPE_W = 600;
+const LANDSCAPE_H = 380;
 const LEFT_X = 6;
 const ACTOR_W = 150;
 const ACTOR_H = 58;
@@ -31,16 +70,25 @@ const TARGET_W = 150;
 const TARGET_H = 84;
 const TARGET_CY = 190;
 
+// Portrait (phones): actors stacked in a column on the right, a rail on the left,
+// shield in the middle and target at the bottom. Sized so 1 unit is about 1px at 320px.
+const PORTRAIT_W = 320;
+const PORTRAIT_PAD = 12;
+const P_CX = PORTRAIT_W / 2;
+const P_ACTOR_X = 120;
+const P_ACTOR_W = 180;
+const P_ACTOR_H = 50;
+const P_ACTOR_GAP = 10;
+const P_RAIL_X = 24;
+const P_SHIELD = { w: 200, h: 150 };
+const P_GAP = 40;
+const P_TARGET_H = 72;
+
 const STEP_MS = 2500;
 const PACKET_MS = 1600;
 const PACKET_RADIUS = 7;
-
-const PACKET_COLOR: Record<Outcome, string> = {
-  permitido: "var(--color-green-ink)",
-  bloqueado: "var(--color-slate-ink)",
-  detectado: "var(--color-amber-ink)",
-  no_detectado: "var(--color-red-ink)",
-};
+/** Ease-in-out for the packet: it is on screen moving, so it accelerates and settles. */
+const PACKET_SPLINE = { calcMode: "spline", keyTimes: "0;1", keySplines: "0.77 0 0.175 1" };
 
 const PALETTE = {
   paper: { fill: "var(--color-field)", stroke: "var(--color-line)" },
@@ -54,19 +102,46 @@ const PALETTE = {
   targetNoDetectado: { fill: "var(--color-red)", stroke: "var(--color-red-ink)" },
 };
 
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const PACKET_COLOR: Record<Outcome, string> = {
+  permitido: "var(--color-green-ink)",
+  bloqueado: "var(--color-slate-ink)",
+  detectado: "var(--color-amber-ink)",
+  no_detectado: "var(--color-red-ink)",
+};
 
-function subscribeReducedMotion(onChange: () => void) {
-  if (typeof window.matchMedia !== "function") return () => {};
-  const media = window.matchMedia(REDUCED_MOTION_QUERY);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+/** Phones and narrow tablets get the portrait layout. Matches Tailwind's `sm` breakpoint minus 1px. */
+const PORTRAIT_QUERY = "(max-width: 639px)";
+
+/** A stable subscribe function per query, so useSyncExternalStore does not resubscribe each render. */
+function subscribeTo(query: string) {
+  return (onChange: () => void) => {
+    if (typeof window.matchMedia !== "function") return () => {};
+    const media = window.matchMedia(query);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  };
+}
+
+const subscribeReducedMotion = subscribeTo(REDUCED_MOTION_QUERY);
+const subscribePortrait = subscribeTo(PORTRAIT_QUERY);
+
+function matches(query: string): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia(query).matches;
 }
 
 function usePrefersReducedMotion(): boolean {
   return useSyncExternalStore(
     subscribeReducedMotion,
-    () => typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION_QUERY).matches,
+    () => matches(REDUCED_MOTION_QUERY),
+    () => false,
+  );
+}
+
+function usePortrait(): boolean {
+  return useSyncExternalStore(
+    subscribePortrait,
+    () => matches(PORTRAIT_QUERY),
     () => false,
   );
 }
@@ -113,11 +188,67 @@ function curve(x1: number, y1: number, x2: number, y2: number): string {
   return `C ${middle} ${y1} ${middle} ${y2} ${x2} ${y2}`;
 }
 
-/** Route from an actor to the shield (stops at its edge) or on through it to the target. */
-function routeFrom(x: number, y: number, stopAtShield: boolean): string {
-  const toShield = `M ${x} ${y} ${curve(x, y, SHIELD_LEFT, SHIELD.cy)}`;
-  if (stopAtShield) return toShield;
-  return `${toShield} L ${SHIELD_RIGHT} ${SHIELD.cy} ${curve(SHIELD_RIGHT, SHIELD.cy, TARGET_X, TARGET_CY)}`;
+function landscapeGeometry(count: number): Geometry {
+  const actors = actorCenters(count).map((y): ActorSlot => {
+    const blocked = `M ${ACTOR_RIGHT} ${y} ${curve(ACTOR_RIGHT, y, SHIELD_LEFT, SHIELD.cy)}`;
+    return {
+      box: { x: LEFT_X, y: y - ACTOR_H / 2, w: ACTOR_W, h: ACTOR_H },
+      anchor: { x: ACTOR_RIGHT, y },
+      label: { x: (ACTOR_RIGHT + SHIELD_LEFT) / 2, y: (y + SHIELD.cy) / 2 },
+      blocked,
+      delivered: `${blocked} L ${SHIELD_RIGHT} ${SHIELD.cy} ${curve(SHIELD_RIGHT, SHIELD.cy, TARGET_X, TARGET_CY)}`,
+    };
+  });
+  return {
+    viewW: LANDSCAPE_W,
+    viewH: LANDSCAPE_H,
+    smallText: 11,
+    actors,
+    shield: { x: SHIELD_LEFT, y: SHIELD.cy - SHIELD.h / 2, w: SHIELD.w, h: SHIELD.h },
+    target: { x: TARGET_X, y: TARGET_CY - TARGET_H / 2, w: TARGET_W, h: TARGET_H },
+    blockPoint: { x: SHIELD_LEFT, y: SHIELD.cy },
+    targetEntry: { x: TARGET_X, y: TARGET_CY },
+    throughPath: `M ${SHIELD_RIGHT} ${SHIELD.cy} ${curve(SHIELD_RIGHT, SHIELD.cy, TARGET_X, TARGET_CY)}`,
+  };
+}
+
+function portraitGeometry(count: number): Geometry {
+  const stackBottom =
+    count === 0 ? PORTRAIT_PAD : PORTRAIT_PAD + (count - 1) * (P_ACTOR_H + P_ACTOR_GAP) + P_ACTOR_H;
+  const shield: Box = {
+    x: P_CX - P_SHIELD.w / 2,
+    y: stackBottom + P_GAP,
+    w: P_SHIELD.w,
+    h: P_SHIELD.h,
+  };
+  const shieldCy = shield.y + shield.h / 2;
+  const target: Box = { x: shield.x, y: shield.y + shield.h + P_GAP, w: shield.w, h: P_TARGET_H };
+
+  const actors = Array.from({ length: count }, (_, index): ActorSlot => {
+    const top = PORTRAIT_PAD + index * (P_ACTOR_H + P_ACTOR_GAP);
+    const y = top + P_ACTOR_H / 2;
+    // Each actor runs left along its own row, then down the rail to the shield's row.
+    const blocked = `M ${P_ACTOR_X} ${y} L ${P_RAIL_X} ${y} L ${P_RAIL_X} ${shieldCy} L ${shield.x} ${shieldCy}`;
+    return {
+      box: { x: P_ACTOR_X, y: top, w: P_ACTOR_W, h: P_ACTOR_H },
+      anchor: { x: P_ACTOR_X, y },
+      label: { x: (P_RAIL_X + P_ACTOR_X) / 2, y },
+      blocked,
+      delivered: `${blocked} L ${P_CX} ${shieldCy} L ${P_CX} ${target.y}`,
+    };
+  });
+
+  return {
+    viewW: PORTRAIT_W,
+    viewH: target.y + P_TARGET_H + PORTRAIT_PAD,
+    smallText: 12,
+    actors,
+    shield,
+    target,
+    blockPoint: { x: shield.x, y: shieldCy },
+    targetEntry: { x: P_CX, y: target.y },
+    throughPath: `M ${P_CX} ${shield.y + shield.h} L ${P_CX} ${target.y}`,
+  };
 }
 
 function originOf(row: TimelineRow): string {
@@ -135,6 +266,7 @@ export default function NetworkDiagram({
   const shadowId = `${uid}-shadow`;
   const gridId = `${uid}-grid`;
   const reducedMotion = usePrefersReducedMotion();
+  const portrait = usePortrait();
   const [playing, setPlaying] = useState(false);
   const [replay, setReplay] = useState(0);
 
@@ -163,8 +295,13 @@ export default function NetworkDiagram({
     setPlaying(true);
   }
 
-  const centers = actorCenters(scenario.actors.length);
-  const actorY = new Map(scenario.actors.map((actor, i) => [actor.id, centers[i]]));
+  const geometry = useMemo(
+    () => (portrait ? portraitGeometry(scenario.actors.length) : landscapeGeometry(scenario.actors.length)),
+    [portrait, scenario.actors.length],
+  );
+  const { smallText, shield, target } = geometry;
+  const actorIndex = new Map(scenario.actors.map((actor, i) => [actor.id, i]));
+
   // Active defenses: toggles that are on, numbers above zero, enums set to anything but "none".
   const enabledToggles = scenario.controls.flatMap((control) => {
     const value = config[control.id];
@@ -177,10 +314,8 @@ export default function NetworkDiagram({
     return Number(value) > 0 ? [control.label] : [];
   });
 
-  const activeY = row ? (actorY.get(row.actorId) ?? TARGET_CY) : null;
+  const activeSlot = row ? (geometry.actors[actorIndex.get(row.actorId) ?? 0] ?? null) : null;
   const blocked = row?.outcome === "bloqueado";
-  const endX = blocked ? SHIELD_LEFT : TARGET_X;
-  const endY = blocked ? SHIELD.cy : TARGET_CY;
   const color = row ? PACKET_COLOR[row.outcome] : undefined;
 
   const targetPalette = !row
@@ -203,10 +338,12 @@ export default function NetworkDiagram({
     : ["Ninguna activa"];
   const shieldMore = enabledToggles.length - 3;
 
+  const endPoint = blocked ? geometry.blockPoint : geometry.targetEntry;
+
   return (
     <div data-diagram className="flex flex-col gap-3">
       <svg
-        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+        viewBox={`0 0 ${geometry.viewW} ${geometry.viewH}`}
         role="img"
         aria-label={label}
         className="block h-auto w-full max-w-full"
@@ -221,12 +358,12 @@ export default function NetworkDiagram({
         </defs>
 
         <g aria-hidden="true">
-          <rect width={VIEW_W} height={VIEW_H} rx={16} style={{ fill: PALETTE.paper.fill }} />
-          <rect width={VIEW_W} height={VIEW_H} rx={16} fill={`url(#${gridId})`} opacity={0.7} />
+          <rect width={geometry.viewW} height={geometry.viewH} rx={16} style={{ fill: PALETTE.paper.fill }} />
+          <rect width={geometry.viewW} height={geometry.viewH} rx={16} fill={`url(#${gridId})`} opacity={0.7} />
 
           {/* Dashed connectors: every actor to the shield, the shield to the target. */}
-          {scenario.actors.map((actor) => {
-            const y = actorY.get(actor.id) ?? TARGET_CY;
+          {scenario.actors.map((actor, i) => {
+            const slot = geometry.actors[i];
             const isActive = row?.actorId === actor.id;
             const style: CSSProperties = isActive
               ? { stroke: color }
@@ -234,7 +371,8 @@ export default function NetworkDiagram({
             return (
               <path
                 key={`edge-${actor.id}`}
-                d={`M ${ACTOR_RIGHT} ${y} ${curve(ACTOR_RIGHT, y, SHIELD_LEFT, SHIELD.cy)}`}
+                className="diagram-edge"
+                d={slot.blocked}
                 fill="none"
                 style={style}
                 strokeWidth={isActive ? 2.5 : 1.5}
@@ -244,7 +382,8 @@ export default function NetworkDiagram({
             );
           })}
           <path
-            d={`M ${SHIELD_RIGHT} ${SHIELD.cy} ${curve(SHIELD_RIGHT, SHIELD.cy, TARGET_X, TARGET_CY)}`}
+            className="diagram-edge"
+            d={geometry.throughPath}
             fill="none"
             style={{ stroke: PALETTE.idle.stroke }}
             strokeWidth={1.5}
@@ -252,11 +391,13 @@ export default function NetworkDiagram({
           />
         </g>
 
-        {scenario.actors.map((actor) => {
-          const y = actorY.get(actor.id) ?? TARGET_CY;
+        {scenario.actors.map((actor, i) => {
+          const slot = geometry.actors[i];
           const palette = PALETTE[actor.role];
           const active = row?.actorId === actor.id;
           const nameLines = wrap(actor.name, 20, 2);
+          const cx = slot.box.x + slot.box.w / 2;
+          const cy = slot.box.y + slot.box.h / 2;
           return (
             <g
               key={actor.id}
@@ -266,23 +407,23 @@ export default function NetworkDiagram({
             >
               <title>{`${actor.name} (${ROLE_LABEL[actor.role]})`}</title>
               <NodeBox
-                x={LEFT_X}
-                y={y - ACTOR_H / 2}
-                w={ACTOR_W}
-                h={ACTOR_H}
+                x={slot.box.x}
+                y={slot.box.y}
+                w={slot.box.w}
+                h={slot.box.h}
                 palette={row ? palette : PALETTE.idle}
                 strong={active}
                 shadowId={shadowId}
               />
               <g aria-hidden="true">
-                <text x={LEFT_X + ACTOR_W / 2} y={y - 10} textAnchor="middle" className="fill-ink text-xs font-bold">
-                  {nameLines.map((line, i) => (
-                    <tspan key={i} x={LEFT_X + ACTOR_W / 2} dy={i === 0 ? 0 : 14}>
+                <text x={cx} y={cy - 10} textAnchor="middle" className="fill-ink text-xs font-bold">
+                  {nameLines.map((line, lineIndex) => (
+                    <tspan key={lineIndex} x={cx} dy={lineIndex === 0 ? 0 : 14}>
                       {line}
                     </tspan>
                   ))}
                 </text>
-                <text x={LEFT_X + ACTOR_W / 2} y={y + 20} textAnchor="middle" className="fill-muted" fontSize={10}>
+                <text x={cx} y={cy + 20} textAnchor="middle" className="fill-muted" fontSize={smallText}>
                   {ROLE_LABEL[actor.role]}
                 </text>
               </g>
@@ -291,25 +432,25 @@ export default function NetworkDiagram({
         })}
 
         <g data-node="shield" aria-hidden="true">
-          <title>Defensas activas</title>
+          <title>Tu configuración activa</title>
           <NodeBox
-            x={SHIELD_LEFT}
-            y={SHIELD.cy - SHIELD.h / 2}
-            w={SHIELD.w}
-            h={SHIELD.h}
+            x={shield.x}
+            y={shield.y}
+            w={shield.w}
+            h={shield.h}
             palette={PALETTE.shield}
             shadowId={shadowId}
           />
-          <text x={SHIELD.cx} y={SHIELD.cy - SHIELD.h / 2 + 26} textAnchor="middle" className="fill-ink text-xs font-bold">
-            Defensas
+          <text x={shield.x + shield.w / 2} y={shield.y + 26} textAnchor="middle" className="fill-ink text-xs font-bold">
+            Tu configuración
           </text>
           {shieldLines.map((line, i) => (
-            <text key={i} x={SHIELD.cx} y={SHIELD.cy - SHIELD.h / 2 + 50 + i * 16} textAnchor="middle" fontSize={11} className="fill-ink">
+            <text key={i} x={shield.x + shield.w / 2} y={shield.y + 50 + i * 16} textAnchor="middle" fontSize={smallText} className="fill-ink">
               {line}
             </text>
           ))}
           {shieldMore > 0 ? (
-            <text x={SHIELD.cx} y={SHIELD.cy - SHIELD.h / 2 + 50 + 3 * 16} textAnchor="middle" fontSize={11} className="fill-muted">
+            <text x={shield.x + shield.w / 2} y={shield.y + 50 + 3 * 16} textAnchor="middle" fontSize={smallText} className="fill-muted">
               {`+${shieldMore} más`}
             </text>
           ) : null}
@@ -319,10 +460,10 @@ export default function NetworkDiagram({
           <title>{scenario.wording.targetLabel}</title>
           {row && row.outcome === "detectado" ? (
             <rect
-              x={TARGET_X - 7}
-              y={TARGET_CY - TARGET_H / 2 - 7}
-              width={TARGET_W + 14}
-              height={TARGET_H + 14}
+              x={target.x - 7}
+              y={target.y - 7}
+              width={target.w + 14}
+              height={target.h + 14}
               rx={20}
               fill="none"
               style={{ stroke: PALETTE.targetDetectado.stroke }}
@@ -330,47 +471,47 @@ export default function NetworkDiagram({
             />
           ) : null}
           <NodeBox
-            x={TARGET_X}
-            y={TARGET_CY - TARGET_H / 2}
-            w={TARGET_W}
-            h={TARGET_H}
+            x={target.x}
+            y={target.y}
+            w={target.w}
+            h={target.h}
             palette={targetPalette}
             shadowId={shadowId}
           />
-          <text x={TARGET_X + TARGET_W / 2} y={TARGET_CY - 12} textAnchor="middle" className="fill-ink text-sm font-bold">
+          <text x={target.x + target.w / 2} y={target.y + target.h / 2 - 12} textAnchor="middle" className="fill-ink text-sm font-bold">
             {targetLines.map((line, i) => (
-              <tspan key={i} x={TARGET_X + TARGET_W / 2} dy={i === 0 ? 0 : 16}>
+              <tspan key={i} x={target.x + target.w / 2} dy={i === 0 ? 0 : 16}>
                 {line}
               </tspan>
             ))}
           </text>
-          <text x={TARGET_X + TARGET_W / 2} y={TARGET_CY + 26} textAnchor="middle" fontSize={10} className="fill-muted">
+          <text x={target.x + target.w / 2} y={target.y + target.h / 2 + 26} textAnchor="middle" fontSize={smallText} className="fill-muted">
             Destino
           </text>
         </g>
 
-        {row && activeY !== null ? (
+        {row && activeSlot !== null ? (
           <g aria-hidden="true">
             {/* Edge label: origin and count of the current step. */}
             <g>
               <rect
-                x={(ACTOR_RIGHT + SHIELD_LEFT) / 2 - 46}
-                y={(activeY + SHIELD.cy) / 2 - 17}
+                x={activeSlot.label.x - 46}
+                y={activeSlot.label.y - 17}
                 width={92}
                 height={34}
                 rx={6}
                 style={{ fill: PALETTE.paper.fill, stroke: PALETTE.idle.stroke }}
               />
-              <text x={(ACTOR_RIGHT + SHIELD_LEFT) / 2} y={(activeY + SHIELD.cy) / 2 - 3} textAnchor="middle" fontSize={10} className="fill-ink font-mono font-bold">
+              <text x={activeSlot.label.x} y={activeSlot.label.y - 3} textAnchor="middle" fontSize={smallText} className="fill-ink font-mono font-bold">
                 {originOf(row)}
               </text>
-              <text x={(ACTOR_RIGHT + SHIELD_LEFT) / 2} y={(activeY + SHIELD.cy) / 2 + 10} textAnchor="middle" fontSize={10} className="fill-muted">
+              <text x={activeSlot.label.x} y={activeSlot.label.y + 10} textAnchor="middle" fontSize={smallText} className="fill-muted">
                 {`×${row.count} ${row.count === 1 ? "evento" : "eventos"}`}
               </text>
             </g>
 
             {blocked ? (
-              <g transform={`translate(${SHIELD_LEFT}, ${SHIELD.cy})`}>
+              <g transform={`translate(${geometry.blockPoint.x}, ${geometry.blockPoint.y})`}>
                 <circle r={11} style={{ fill: PALETTE.target.stroke }} />
                 <text y={4} textAnchor="middle" fontSize={12} fontWeight={700} style={{ fill: PALETTE.paper.fill }}>
                   ✕
@@ -380,8 +521,8 @@ export default function NetworkDiagram({
 
             {reducedMotion ? (
               <circle
-                cx={endX}
-                cy={endY}
+                cx={endPoint.x}
+                cy={endPoint.y}
                 r={PACKET_RADIUS}
                 style={{ fill: color, stroke: PALETTE.paper.fill }}
                 strokeWidth={2}
@@ -389,8 +530,8 @@ export default function NetworkDiagram({
             ) : (
               <circle
                 key={`${index}-${replay}`}
-                cx={ACTOR_RIGHT}
-                cy={activeY}
+                cx={activeSlot.anchor.x}
+                cy={activeSlot.anchor.y}
                 r={PACKET_RADIUS}
                 style={{ fill: color, stroke: PALETTE.paper.fill }}
                 strokeWidth={2}
@@ -398,7 +539,8 @@ export default function NetworkDiagram({
                 <animateMotion
                   dur={`${PACKET_MS}ms`}
                   fill="freeze"
-                  {...{ path: routeFrom(ACTOR_RIGHT, activeY, blocked === true) }}
+                  {...PACKET_SPLINE}
+                  {...{ path: blocked ? activeSlot.blocked : activeSlot.delivered }}
                 />
               </circle>
             )}

@@ -20,13 +20,11 @@ interface ControlPanelProps {
 export default function ControlPanel({ title, controls, config, onChange }: ControlPanelProps) {
   const titleId = useId();
   return (
-    <section aria-labelledby={titleId} className="panel">
-      <div className="panel-head">
-        <h2 id={titleId} className="label-caps">
-          {title}
-        </h2>
-      </div>
-      <div role="group" aria-labelledby={titleId} className="flex flex-col gap-5 p-4">
+    <div>
+      <h2 id={titleId} className="text-lg">
+        {title}
+      </h2>
+      <div role="group" aria-labelledby={titleId} className="mt-4 flex flex-col gap-5">
         {controls.map((control) => {
           if (control.kind === "toggle") {
             return (
@@ -58,7 +56,7 @@ export default function ControlPanel({ title, controls, config, onChange }: Cont
           );
         })}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -81,7 +79,7 @@ function ToggleField({
           checked={value}
           onChange={(event) => onChange(event.target.checked)}
           aria-describedby={helpId}
-          className="mt-0.5 size-5 shrink-0 accent-defense"
+          className="mt-0.5 size-5 shrink-0 accent-green-ink"
         />
         <span className="font-bold">
           {control.label}{" "}

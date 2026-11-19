@@ -28,8 +28,8 @@ Save tokens. Talk short.
 ## Hard rules (ALL agents)
 
 - Subagents: NO commit, NO push. Only orchestrator commits + pushes.
-- Commit ratio: max 2 orchestrator commits, then stop till human makes 1. Human commit resets count.
-- Orchestrator commits: author `Claude <noreply@anthropic.com>`. Human commits: own name. Ratio countable from `git log`.
+- Orchestrator commits: author `Claude <noreply@anthropic.com>`. Human commits: own name.
+- Commit often: one logical change per commit, push after each green gate. No limit.
 - All commits: conventional msg, no AI trailer.
 - NO touch `.github/`, Vercel config. Human owns. Need change? Report snippet.
 - NO `npm audit fix --force`.
@@ -83,4 +83,4 @@ Report: bugs found, bugs fixed, still open, coverage gaps. Caveman.
 
 ## Handoff
 
-builder -> qa -> orchestrator commits (ratio rule) -> human reviews. Next slice only after human ok.
+builder -> qa -> orchestrator commits + pushes -> human reviews. Next slice only after human ok.

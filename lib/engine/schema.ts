@@ -181,6 +181,7 @@ const wording = z
     panel_configuracion: text.default("Configuración del servidor"),
     operatividad_ayuda: text.default("Accesos legítimos que pudieron entrar."),
     legitimo_resumen: text.default("Pudo entrar {permitidos} de {total} veces"),
+    objetivo: text.default("Tu servidor"),
   })
   .prefault({});
 
@@ -472,6 +473,7 @@ function toScenario(raw: RawScenario): Scenario {
       configPanelTitle: raw.vocabulario.panel_configuracion,
       operationsHint: raw.vocabulario.operatividad_ayuda,
       legitSummary: raw.vocabulario.legitimo_resumen,
+      targetLabel: raw.vocabulario.objetivo,
     },
   };
 }

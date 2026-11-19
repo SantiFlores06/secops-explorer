@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { Comparison } from "@/lib/engine/compare";
 import { formatClock, summarizeEvents, type TimelineRow } from "@/lib/engine/summary";
 import type { ControlValue, Scenario, Wording } from "@/lib/engine/types";
@@ -16,6 +16,14 @@ import {
 interface ResultsViewProps {
   scenario: Scenario;
   comparison: Comparison;
+  /** Optional: the player passes the rows it already built for the diagram. */
+  rows?: TimelineRow[];
+  /**
+   * Optional: when the player owns the step (to drive the network diagram), it passes
+   * `step` and `onStepChange`. Without them the view keeps its own step.
+   */
+  step?: number;
+  onStepChange?: (step: number) => void;
 }
 
 /**
@@ -23,11 +31,27 @@ interface ResultsViewProps {
  * one places itself (desktop) and orders itself (phone). The player keys this by run,
  * so the step starts over every time the scenario is simulated again.
  */
-export default function ResultsView({ scenario, comparison }: ResultsViewProps) {
-  const rows = summarizeEvents(comparison.yours.events);
-  const [step, setStep] = useState(0);
+export default function ResultsView({
+  scenario,
+  comparison,
+  rows: rowsProp,
+  step: controlledStep,
+  onStepChange,
+}: ResultsViewProps) {
+  const rows = rowsProp ?? summarizeEvents(comparison.yours.events);
+  const [localStep, setLocalStep] = useState(0);
+  const isControlled = controlledStep !== undefined;
+  const step = controlledStep ?? localStep;
   const stepperRef = useRef<HTMLDivElement>(null);
   const lastStep = rows.length - 1;
+
+  const setStep = useCallback(
+    (next: number) => {
+      if (!isControlled) setLocalStep(next);
+      onStepChange?.(next);
+    },
+    [isControlled, onStepChange],
+  );
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -39,11 +63,11 @@ export default function ResultsView({ scenario, comparison }: ResultsViewProps) 
       }
       event.preventDefault();
       const delta = event.key === "ArrowRight" ? 1 : -1;
-      setStep((current) => Math.max(0, Math.min(current + delta, lastStep)));
+      setStep(Math.max(0, Math.min(step + delta, lastStep)));
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lastStep]);
+  }, [lastStep, step, setStep]);
 
   // Keep the current step visible inside the stepper's own horizontal scroll box.
   useEffect(() => {
@@ -100,7 +124,7 @@ function StepPanel({
   return (
     <section
       aria-labelledby="paso-titulo"
-      className="card order-3 flex flex-col gap-4 p-5 lg:col-start-2 lg:row-start-1"
+      className="card order-3 flex flex-col gap-4 p-5 lg:col-start-2 lg:row-start-1 lg:row-span-2"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="label-caps">

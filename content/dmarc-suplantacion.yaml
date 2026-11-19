@@ -25,6 +25,7 @@ vocabulario:
   panel_configuracion: Configuración del dominio
   operatividad_ayuda: Correo legítimo que llegó.
   legitimo_resumen: "Llegó {permitidos} de {total} veces"
+  objetivo: Buzones de la cooperativa
 
 # Sin inicio de sesión: estas claves no aplican al correo.
 metodos_aceptados: {}

@@ -5,9 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { compareWithOptimal } from "@/lib/engine/compare";
 import { defaultConfig } from "@/lib/engine/config";
 import { DEFAULT_SEED, decodeShare, encodeShare, nextSeed, type DecodedShare } from "@/lib/engine/share";
+import { summarizeEvents } from "@/lib/engine/summary";
 import type { Config, ControlValue, Outcome, Scenario } from "@/lib/engine/types";
 import ControlPanel from "./control-panel";
 import { OUTCOME_CHIP, OUTCOME_LABEL, ROLE_LABEL } from "./labels";
+import NetworkDiagram from "./network-diagram";
 import ResultsView from "./results-view";
 
 /**
@@ -43,10 +45,16 @@ function Player({ scenario, initial }: { scenario: Scenario; initial: DecodedSha
     initial.shared ? { id: 1, config: initial.config, seed: initial.seed } : null,
   );
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  // The step lives here so the network diagram and the step panel stay in sync.
+  const [step, setStep] = useState(0);
 
   const comparison = useMemo(
     () => (run ? compareWithOptimal(scenario, run.config, run.seed) : null),
     [scenario, run],
+  );
+  const rows = useMemo(
+    () => (comparison ? summarizeEvents(comparison.yours.events) : null),
+    [comparison],
   );
 
   function updateControl(controlId: string, value: ControlValue) {
@@ -56,6 +64,7 @@ function Player({ scenario, initial }: { scenario: Scenario; initial: DecodedSha
 
   function simulateNow() {
     setRun((previous) => ({ id: (previous?.id ?? 0) + 1, config: { ...config }, seed }));
+    setStep(0);
     setCopyState("idle");
     window.history.replaceState(
       null,
@@ -68,6 +77,7 @@ function Player({ scenario, initial }: { scenario: Scenario; initial: DecodedSha
     setConfig(defaultConfig(scenario));
     setSeed(DEFAULT_SEED);
     setRun(null);
+    setStep(0);
     setCopyState("idle");
     window.history.replaceState(null, "", window.location.pathname);
   }
@@ -127,13 +137,15 @@ function Player({ scenario, initial }: { scenario: Scenario; initial: DecodedSha
           </ul>
         </div>
 
-        {/* Reserved for the network diagram; the next slice draws it here. */}
-        <div
-          data-diagram
-          className="paper-grid flex min-h-56 items-center justify-center rounded-control border border-dashed border-line-strong p-6 text-center text-sm text-muted"
-        >
-          <p>Espacio reservado para el diagrama de red.</p>
-        </div>
+        {/* Keyed by run: a new simulation resets the playback and the packet. */}
+        <NetworkDiagram
+          key={run?.id ?? 0}
+          scenario={scenario}
+          config={config}
+          rows={rows}
+          step={step}
+          onStepChange={setStep}
+        />
 
         <div className="flex flex-col gap-3">
           <h3 className="label-caps">Quiénes participan</h3>
@@ -162,10 +174,17 @@ function Player({ scenario, initial }: { scenario: Scenario; initial: DecodedSha
           <p role="status" className="sr-only">
             Simulación lista: {comparison.yours.score.total} de 100 puntos.
           </p>
-          <ResultsView key={run.id} scenario={scenario} comparison={comparison} />
+          <ResultsView
+            key={run.id}
+            scenario={scenario}
+            comparison={comparison}
+            rows={rows ?? []}
+            step={step}
+            onStepChange={setStep}
+          />
         </>
       ) : (
-        <section className="card order-3 border-dashed p-6 lg:col-start-2 lg:row-start-1">
+        <section className="card order-3 border-dashed p-6 lg:col-start-2 lg:row-start-1 lg:row-span-2">
           <h2 className="text-lg">Todavía no hay resultados</h2>
           <p className="mt-2 leading-7 text-muted">
             Ajusta la configuración y pulsa <strong className="text-ink">Simular</strong>. Verás
@@ -176,7 +195,7 @@ function Player({ scenario, initial }: { scenario: Scenario; initial: DecodedSha
 
       <section
         aria-label="Tu configuración"
-        className="card order-4 flex flex-col gap-5 p-5 lg:col-start-2 lg:row-start-2 lg:row-span-5"
+        className="card order-4 flex flex-col gap-5 p-5 lg:col-start-2 lg:row-start-3 lg:row-span-4"
       >
         <p className="label-caps">Tu configuración</p>
 

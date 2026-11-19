@@ -48,6 +48,7 @@ for (const id of SCENARIOS) {
 
     await expect(page.getByText("Puntaje total")).toBeVisible();
     await expect(page.getByText(OUTCOME_PILL).first()).toBeVisible();
+    await expect(page.locator("[data-diagram] svg")).toBeVisible();
 
     const { errors, violations } = await report();
     expect(errors).toEqual([]);

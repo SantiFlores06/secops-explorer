@@ -1,4 +1,5 @@
 import { mailFacts } from "./mail";
+import { webFacts } from "./web";
 import type {
   Actor,
   Attempt,
@@ -89,6 +90,7 @@ function buildFacts(
 ): Record<string, FactValue> {
   const bannedUntil = state.bannedUntil.get(attempt.ip);
   const mail = actor.mail ? mailFacts(scenario, config, actor.mail) : {};
+  const web = actor.web ? webFacts(config, actor.web) : {};
   return {
     ...config,
     accion: action,
@@ -102,6 +104,7 @@ function buildFacts(
     usuario_permitido: scenario.allowedUsers.includes(attempt.user),
     ip_baneada: bannedUntil !== undefined && bannedUntil > attempt.t,
     ...mail,
+    ...web,
   };
 }
 

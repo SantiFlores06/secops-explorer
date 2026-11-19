@@ -8,8 +8,8 @@
 
 export type Outcome = "permitido" | "bloqueado" | "detectado" | "no_detectado";
 export type Role = "legitimo" | "atacante";
-/** What an actor tries: log in (SSH scenario) or send a message (DMARC scenario). */
-export type AuthAction = "login_clave" | "login_password" | "enviar_correo";
+/** What an actor tries: log in (SSH scenario), send a message (DMARC) or load a web page (web). */
+export type AuthAction = "login_clave" | "login_password" | "enviar_correo" | "visitar_web";
 export type Credential = "valida" | "invalida";
 
 export type ControlValue = boolean | number | string;
@@ -80,6 +80,12 @@ export interface MailProfile {
   server: "propio" | "proveedor" | "ajeno";
 }
 
+/** How a web request reaches the shop. Values come from scenario data (Spanish keys, English vectors). */
+export interface WebProfile {
+  /** "navegacion": a normal visit. "chat_proveedor": the provider's chat script. Attacks: "xss", "mitm", "clickjacking". */
+  vector: "navegacion" | "chat_proveedor" | "xss" | "mitm" | "clickjacking";
+}
+
 export interface Actor {
   id: string;
   name: string;
@@ -95,6 +101,8 @@ export interface Actor {
   hasSecondFactor: boolean;
   /** Present only for actors that send mail. */
   mail?: MailProfile;
+  /** Present only for actors that browse the shop. */
+  web?: WebProfile;
 }
 
 export type FactValue = boolean | number | string;

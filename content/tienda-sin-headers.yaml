@@ -1,0 +1,226 @@
+# Escenario: La tienda sin headers (Configurar · Web y AppSec)
+# Todas las direcciones IP pertenecen a rangos reservados para documentación (RFC 5737).
+# Todos los dominios son reservados para documentación y pruebas (RFC 2606).
+id: tienda-sin-headers
+track: web-appsec
+tipo: configurar
+titulo: La tienda sin headers
+resumen: Frena el robo de sesión y el enmarcado del pago sin cortar el chat de soporte del proveedor.
+contexto: >-
+  Una cooperativa ficticia vende online: los clientes inician sesión y pagan.
+  El chat de soporte es un script que carga desde un proveedor externo. Durante
+  una hora simulada un comentario de producto con código malicioso intenta
+  robar la cookie de sesión, un atacante en una red wifi pública quita el HTTPS
+  y una página ajena enmarca el checkout para engañar al cliente.
+duracion_segundos: 3600
+tags:
+  attack: [T1059.007, T1557, T1185]
+  csf: [PR.PS, DE.CM]
+
+usuarios_existentes: [cliente@example.com, soporte@example.com]
+usuarios_permitidos: []
+
+# Textos de la interfaz propios de este escenario. Sin este bloque se usan los de SSH.
+vocabulario:
+  panel_configuracion: Configuración de la tienda
+  operatividad_ayuda: Visitas legítimas que funcionaron.
+  legitimo_resumen: "Funcionó {permitidos} de {total} veces"
+  objetivo: Tu tienda online
+
+# Sin inicio de sesión por clave: estas claves no aplican a la web.
+metodos_aceptados: {}
+
+# Cada control protege de una forma distinta: el CSP frena scripts inyectados,
+# HSTS obliga HTTPS, las cookies limitan qué puede leer un script y el
+# enmarcado decide si otra página puede mostrar el checkout.
+controles:
+  - id: csp
+    tipo: opcion
+    etiqueta: Política CSP
+    ayuda: 'Define qué scripts puede ejecutar la página. "none" no pone política. "unsafe-inline" permite scripts incrustados en la página. "estricta" bloquea scripts ajenos e incrustados. "estricta, con el proveedor" además autoriza el script del chat de soporte.'
+    opciones:
+      - { valor: none, etiqueta: "none (sin política)", costo: 0 }
+      - { valor: unsafe_inline, etiqueta: "unsafe-inline permitido", costo: 0 }
+      - { valor: estricta, etiqueta: "estricta", costo: 1 }
+      - { valor: estricta_con_proveedor, etiqueta: "estricta, con el proveedor del chat", costo: 1 }
+    default: none
+  - id: hsts
+    tipo: toggle
+    etiqueta: Strict-Transport-Security (HSTS)
+    ayuda: 'Indica al navegador que solo use HTTPS con tu sitio. Sin HSTS, un atacante en la red puede responder por HTTP y quitar el cifrado en la primera visita.'
+    default: false
+    costo: 1
+  - id: cookies
+    tipo: opcion
+    etiqueta: Atributos de la cookie de sesión
+    ayuda: 'Secure envía la cookie solo por HTTPS. HttpOnly impide que un script la lea. SameSite evita que otros sitios la envíen en sus peticiones. Sin HttpOnly, un script inyectado puede copiar la sesión.'
+    opciones:
+      - { valor: none, etiqueta: "none (sin atributos)", costo: 0 }
+      - { valor: secure_httponly, etiqueta: "Secure + HttpOnly", costo: 0 }
+      - { valor: secure_httponly_samesite, etiqueta: "Secure + HttpOnly + SameSite", costo: 0 }
+    default: none
+  - id: marcos
+    tipo: toggle
+    etiqueta: Impedir el enmarcado (frame-ancestors)
+    ayuda: 'Solo tu sitio puede mostrarse dentro de un marco. Sin esta política, otra página puede cargar el checkout en un iframe invisible y engañar al cliente para que haga clic en botones que no ve.'
+    default: false
+    costo: 0
+
+actores:
+  - id: clientes
+    nombre: Clientes de la tienda
+    descripcion: Navegan, inician sesión y compran desde sus casas y celulares.
+    rol: legitimo
+    patron: goteo
+    intentos: 20
+    metodos: [visitar_web]
+    usuarios: [cliente@example.com]
+    ips: { tipo: fija, valor: 198.51.100.20 }
+    via_vpn: false
+    segundo_factor: false
+    web: { vector: navegacion }
+  - id: chat_soporte
+    nombre: Chat de soporte del proveedor
+    descripcion: Un script que el sitio carga desde los servidores de un proveedor externo, que no es parte de la cooperativa.
+    rol: legitimo
+    patron: goteo
+    intentos: 6
+    metodos: [visitar_web]
+    usuarios: [soporte@example.com]
+    ips: { tipo: fija, valor: 198.51.100.70 }
+    via_vpn: false
+    segundo_factor: false
+    web: { vector: chat_proveedor }
+  - id: xss_comentarios
+    nombre: Comentario con script malicioso
+    descripcion: Deja un comentario de producto con código que intenta leer la cookie de sesión de quien lo abre y enviarla a un servidor ajeno.
+    rol: atacante
+    patron: goteo
+    intentos: 4
+    metodos: [visitar_web]
+    usuarios: [cliente@example.com]
+    ips: { tipo: fija, valor: 203.0.113.80 }
+    via_vpn: false
+    segundo_factor: false
+    web: { vector: xss }
+  - id: mitm_wifi
+    nombre: Intruso en el wifi público
+    descripcion: Se sitúa entre el cliente y la tienda en una red pública y responde por HTTP para quitar el HTTPS.
+    rol: atacante
+    patron: goteo
+    intentos: 3
+    metodos: [visitar_web]
+    usuarios: [cliente@example.com]
+    ips: { tipo: fija, valor: 203.0.113.90 }
+    via_vpn: false
+    segundo_factor: false
+    web: { vector: mitm }
+  - id: clickjacking
+    nombre: Página que enmarca el checkout
+    descripcion: Muestra el checkout de la tienda dentro de un marco invisible sobre una página falsa, para engañar al cliente con clics.
+    rol: atacante
+    patron: goteo
+    intentos: 3
+    metodos: [visitar_web]
+    usuarios: [cliente@example.com]
+    ips: { tipo: fija, valor: 203.0.113.100 }
+    via_vpn: false
+    segundo_factor: false
+    web: { vector: clickjacking }
+
+# Se evalúa en orden: la primera regla que coincide decide el resultado.
+evaluacion:
+  - si: { rol: atacante, vector: xss, csp_bloquea_xss: true }
+    resultado: bloqueado
+    explicacion: xss_csp_bloqueado
+  - si: { rol: atacante, vector: xss, cookie_httponly: true }
+    resultado: detectado
+    explicacion: xss_cookie_httponly
+  - si: { rol: atacante, vector: xss }
+    resultado: no_detectado
+    explicacion: xss_sin_proteccion
+  - si: { rol: atacante, vector: mitm, hsts: true }
+    resultado: bloqueado
+    explicacion: mitm_hsts
+  - si: { rol: atacante, vector: mitm }
+    resultado: no_detectado
+    explicacion: mitm_sin_hsts
+  - si: { rol: atacante, vector: clickjacking, marcos: true }
+    resultado: bloqueado
+    explicacion: clickjacking_marcos
+  - si: { rol: atacante, vector: clickjacking }
+    resultado: no_detectado
+    explicacion: clickjacking_sin_proteccion
+  - si: { rol: atacante }
+    resultado: no_detectado
+    explicacion: ataque_no_cubierto
+  - si: { rol: legitimo, vector: chat_proveedor, proveedor_autorizado: false }
+    resultado: bloqueado
+    explicacion: chat_csp_bloqueado
+  - si: {}
+    resultado: permitido
+    explicacion: navegacion_legitima
+
+explicaciones:
+  xss_csp_bloqueado:
+    titulo: Script malicioso bloqueado por la política CSP
+    texto: "El comentario intentó ejecutar código inyectado, pero la política estricta del navegador no permitió ejecutar scripts que no estuvieran autorizados."
+    practica: "Una CSP estricta, sin 'unsafe-inline' y con listas de origen explícitas, es la defensa principal contra XSS. Sigue siendo necesaria aunque la app escape bien la entrada."
+    fuente: "OWASP XSS Prevention Cheat Sheet; W3C Content Security Policy Level 3"
+  xss_cookie_httponly:
+    titulo: Robo de sesión frustrado por HttpOnly
+    texto: "El script malicioso llegó a ejecutarse, pero la cookie de sesión tiene HttpOnly: el script no pudo leerla y el intento quedó registrado."
+    practica: "HttpOnly no evita el XSS, limita su daño: el script no puede copiar la sesión. Combínalo con una CSP estricta y con Secure."
+    fuente: "OWASP Session Management Cheat Sheet; MDN: Set-Cookie (HttpOnly)"
+  xss_sin_proteccion:
+    titulo: Sesión robada sin que nadie se entere
+    texto: "El script malicioso se ejecutó sin que la política lo bloqueara y la cookie de sesión era legible. El atacante usó la sesión del cliente sin que la tienda lo notara."
+    practica: "Sin CSP ni HttpOnly, cualquier XSS equivale a una cuenta comprometida. Empieza por una CSP y marca la cookie como HttpOnly."
+    fuente: "OWASP XSS Prevention Cheat Sheet; OWASP Session Management Cheat Sheet"
+  mitm_hsts:
+    titulo: Cambio a HTTP bloqueado por HSTS
+    texto: "El intruso intentó responder por HTTP, pero el navegador ya sabía que la tienda solo funciona con HTTPS y se negó a cargar la página sin cifrar."
+    practica: "HSTS protege desde la segunda visita. Para la primera, conviene incluir el dominio en la lista de precarga de HSTS."
+    fuente: "RFC 6797 (HTTP Strict Transport Security); MDN: Strict-Transport-Security"
+  mitm_sin_hsts:
+    titulo: HTTPS quitado sin que nadie lo note
+    texto: "Sin HSTS, el navegador aceptó la respuesta por HTTP. El intruso pudo leer o cambiar lo que el cliente veía, y la sesión viajó sin cifrar."
+    practica: "Sin HSTS, cualquier red pública puede degradar la conexión. Activa HSTS con un max-age largo y, cuando estés listo, includeSubDomains."
+    fuente: "RFC 6797 (HTTP Strict Transport Security); OWASP Transport Layer Security Cheat Sheet"
+  clickjacking_marcos:
+    titulo: Enmarcado del checkout bloqueado
+    texto: "La página ajena intentó mostrar el checkout dentro de un marco, pero la política frame-ancestors del navegador no lo permitió."
+    practica: "frame-ancestors 'none' o 'self' bloquea el enmarcado. X-Frame-Options sigue siendo útil para navegadores antiguos."
+    fuente: "OWASP Clickjacking Defense Cheat Sheet; W3C Content Security Policy Level 3 (frame-ancestors)"
+  clickjacking_sin_proteccion:
+    titulo: Checkout enmarcado sin protección
+    texto: "La página ajena mostró el checkout dentro de un marco invisible y el cliente pudo hacer clic en botones que no veía."
+    practica: "Sin frame-ancestors ni X-Frame-Options, cualquier página puede enmarcar el pago. Bloquea el enmarcado de todas las páginas sensibles."
+    fuente: "OWASP Clickjacking Defense Cheat Sheet; RFC 7034 (X-Frame-Options)"
+  ataque_no_cubierto:
+    titulo: Ataque no cubierto por la configuración
+    texto: "Ninguna de las defensas configuradas frenó este intento."
+    practica: "Revisa las cabeceras de seguridad de tu sitio con una herramienta de auditoría antes de publicar."
+    fuente: "OWASP Secure Headers Project"
+  chat_csp_bloqueado:
+    titulo: Chat de soporte bloqueado por la CSP
+    texto: "El script del chat viene de un proveedor externo. La política estricta no lo autoriza, así que el navegador no lo ejecutó y el cliente no pudo usar el soporte."
+    practica: "Una CSP estricta debe listar a cada proveedor que cargas (chat, analítica, pagos). Autoriza al proveedor del chat antes de subir la política."
+    fuente: "W3C Content Security Policy Level 3; MDN: Content-Security-Policy"
+  navegacion_legitima:
+    titulo: Visita legítima
+    texto: "La página cargó con normalidad: la política configurada permite lo que la tienda necesita."
+    practica: "Una CSP sin fuentes explícitas para tus proveedores rompe funciones de la tienda. Prueba cada cambio con el chat, los pagos y las analíticas."
+    fuente: "W3C Content Security Policy Level 3; MDN: Content-Security-Policy"
+
+pesos:
+  seguridad: 0.5
+  operatividad: 0.35
+  costo: 0.15
+
+# Configuración recomendada: CSP estricta con el proveedor del chat, HSTS, cookies con todos los atributos y enmarcado bloqueado.
+optimo:
+  csp: estricta_con_proveedor
+  hsts: true
+  cookies: secure_httponly_samesite
+  marcos: true

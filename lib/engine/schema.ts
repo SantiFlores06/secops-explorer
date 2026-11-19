@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isDocumentationIp, isDocumentationRange } from "./ips";
 import { MAIL_FACTS } from "./mail";
+import { WEB_FACTS } from "./web";
 import type {
   Actor,
   Behavior,
@@ -11,6 +12,7 @@ import type {
   MailProfile,
   Rule,
   Scenario,
+  WebProfile,
 } from "./types";
 
 /**
@@ -40,7 +42,7 @@ const id = z
   .regex(/^[a-z][a-z0-9_-]*$/, "debe usar minúsculas, números, guiones y guiones bajos");
 const text = z.string().min(1, "no puede estar vacío");
 const outcome = z.enum(["permitido", "bloqueado", "detectado", "no_detectado"]);
-const authAction = z.enum(["login_clave", "login_password", "enviar_correo"]);
+const authAction = z.enum(["login_clave", "login_password", "enviar_correo", "visitar_web"]);
 const integerPair = z
   .tuple([z.number().int().min(0), z.number().int().min(0)])
   .refine(([min, max]) => min <= max, "el mínimo no puede superar al máximo");
@@ -105,6 +107,10 @@ const mailProfile = z.strictObject({
   servidor: z.enum(["propio", "proveedor", "ajeno"]),
 });
 
+const webProfile = z.strictObject({
+  vector: z.enum(["navegacion", "chat_proveedor", "xss", "mitm", "clickjacking"]),
+});
+
 const ips = z.discriminatedUnion("tipo", [
   z.strictObject({
     tipo: z.literal("fija"),
@@ -132,6 +138,7 @@ const actorBase = {
   via_vpn: z.boolean(),
   segundo_factor: z.boolean(),
   correo: mailProfile.optional(),
+  web: webProfile.optional(),
 };
 
 const actor = z
@@ -267,7 +274,7 @@ const validated = rawScenario.superRefine((data, ctx) => {
     }
   }
 
-  const knownFacts = new Set<string>([...BUILTIN_FACTS, ...MAIL_FACTS, ...controlIds]);
+  const knownFacts = new Set<string>([...BUILTIN_FACTS, ...MAIL_FACTS, ...WEB_FACTS, ...controlIds]);
   data.evaluacion.forEach((item, index) => {
     for (const key of Object.keys(item.si)) {
       if (!knownFacts.has(key)) {
@@ -381,6 +388,10 @@ function toMail(raw: NonNullable<RawActor["correo"]>): MailProfile {
   return { fromDomain: raw.dominio, server: raw.servidor };
 }
 
+function toWeb(raw: NonNullable<RawActor["web"]>): WebProfile {
+  return { vector: raw.vector };
+}
+
 function toActor(raw: RawActor): Actor {
   const ipSpec: IpSpec =
     raw.ips.tipo === "fija"
@@ -412,6 +423,7 @@ function toActor(raw: RawActor): Actor {
     viaVpn: raw.via_vpn,
     hasSecondFactor: raw.segundo_factor,
     ...(raw.correo ? { mail: toMail(raw.correo) } : {}),
+    ...(raw.web ? { web: toWeb(raw.web) } : {}),
   };
 }
 

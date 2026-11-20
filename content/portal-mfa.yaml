@@ -1,0 +1,230 @@
+# Escenario: El portal de la cooperativa (Configurar · Identidad y acceso)
+# Todas las direcciones IP pertenecen a rangos reservados para documentación (RFC 5737).
+# Todos los dominios son reservados para documentación y pruebas (RFC 2606).
+id: portal-mfa
+track: identidad
+tipo: configurar
+titulo: El portal de la cooperativa
+resumen: "Frena las contraseñas filtradas, el spam de notificaciones y el proxy de phishing sin castigar a quien se equivoca al tipear."
+contexto: >-
+  Los empleados de una cooperativa ficticia inician sesión en su portal web para ver la nómina y el correo.
+  Circulan contraseñas filtradas de otros sitios, y los atacantes apuntan al portal. Durante una hora simulada
+  una botnet prueba pares de usuario y contraseña filtrados, alguien con una contraseña válida envía
+  solicitudes de confirmación push sin parar, y una página falsa reenvía la contraseña y el código de la víctima
+  al portal real para quedarse con la sesión.
+duracion_segundos: 3600
+tags:
+  attack: [T1110.004, T1621, T1557]
+  csf: [PR.AA, DE.CM]
+
+usuarios_existentes: [ana@example.com, luis@example.com, nomina@example.com]
+usuarios_permitidos: []
+
+# Textos de la interfaz propios de este escenario. Sin este bloque se usan los de SSH.
+vocabulario:
+  panel_configuracion: Configuración del acceso
+  operatividad_ayuda: Inicios de sesión legítimos que funcionaron.
+  legitimo_resumen: "Entró {permitidos} de {total} veces"
+  objetivo: Portal de la cooperativa
+
+# Sin inicio de sesión por clave: el acceso al portal se describe con sus propios métodos.
+metodos_aceptados: {}
+
+controles:
+  - id: mfa
+    tipo: opcion
+    etiqueta: Segundo factor (MFA)
+    ayuda: "none no pide segundo factor. SMS envía un código al teléfono. Push pide aprobar una notificación. Push con número obliga a copiar un número que aparece en la pantalla. TOTP usa una app con códigos temporales. FIDO2 usa una llave de seguridad o una passkey, ligada al sitio real."
+    opciones:
+      - { valor: none, etiqueta: "none (sin segundo factor)", costo: 0 }
+      - { valor: sms, etiqueta: "SMS", costo: 1 }
+      - { valor: push, etiqueta: "Notificación push", costo: 1 }
+      - { valor: push_numero, etiqueta: "Push con coincidencia de número", costo: 1 }
+      - { valor: totp, etiqueta: "App TOTP", costo: 1 }
+      - { valor: fido2, etiqueta: "Llave de seguridad o passkey (FIDO2)", costo: 2 }
+    default: none
+  - id: contrasenas
+    tipo: opcion
+    etiqueta: Política de contraseñas
+    ayuda: "Básica exige solo un largo mínimo. Larga y filtradas exige un largo mayor y rechaza contraseñas que aparecen en listas de filtraciones conocidas."
+    opciones:
+      - { valor: basica, etiqueta: "básica (largo mínimo)", costo: 0 }
+      - { valor: larga_y_filtradas, etiqueta: "larga y sin filtraciones conocidas", costo: 0 }
+    default: basica
+  - id: bloqueo
+    tipo: toggle
+    etiqueta: Bloqueo de cuenta tras 5 fallos
+    ayuda: "Tras cinco intentos fallidos, la cuenta se bloquea y se avisa al equipo. Frena la adivinación, pero también cierra el acceso a quien se equivoca al tipear."
+    default: false
+    costo: 1
+
+actores:
+  - id: empleados
+    nombre: Empleados de la cooperativa
+    descripcion: Inician sesión en el portal para ver su nómina y su correo, desde la oficina y desde casa.
+    rol: legitimo
+    patron: goteo
+    intentos: 20
+    metodos: [iniciar_sesion_portal]
+    usuarios: [ana@example.com, luis@example.com]
+    ips: { tipo: fija, valor: 198.51.100.20 }
+    via_vpn: false
+    segundo_factor: false
+    identidad: { vector: inicio }
+  - id: empleado_tipeo
+    nombre: Empleado que se equivoca al tipear
+    descripcion: Escribe mal la contraseña de vez en cuando y la acierta a la segunda o a la tercera.
+    rol: legitimo
+    patron: goteo
+    intentos: 12
+    metodos: [iniciar_sesion_portal]
+    usuarios: [luis@example.com]
+    credencial: adivinada
+    prob_exito: 0.6
+    ips: { tipo: fija, valor: 198.51.100.21 }
+    via_vpn: false
+    segundo_factor: false
+    identidad: { vector: tipeo }
+  - id: relleno_credenciales
+    nombre: Botnet con contraseñas filtradas
+    descripcion: Prueba pares de usuario y contraseña que se filtraron en otros sitios, desde muchas direcciones distintas.
+    rol: atacante
+    patron: rafagas
+    intentos_por_ip: [3, 5]
+    metodos: [iniciar_sesion_portal]
+    usuarios: [ana@example.com, luis@example.com, nomina@example.com]
+    credencial: adivinada
+    prob_exito: 0.15
+    ips: { tipo: variable, cantidad: 10, rangos: [192.0.2.0/24] }
+    via_vpn: true
+    segundo_factor: false
+    identidad: { vector: relleno }
+  - id: fatiga_mfa
+    nombre: Spam de notificaciones push
+    descripcion: Tiene una contraseña válida y envía solicitudes de confirmación una y otra vez, con la esperanza de que alguien las apruebe por cansancio.
+    rol: atacante
+    patron: goteo
+    intentos: 15
+    metodos: [iniciar_sesion_portal]
+    usuarios: [luis@example.com]
+    ips: { tipo: fija, valor: 203.0.113.60 }
+    via_vpn: false
+    segundo_factor: false
+    identidad: { vector: fatiga }
+  - id: phishing_aitm
+    nombre: Phishing con proxy en tiempo real
+    descripcion: Una página falsa reenvía la contraseña y el código de la víctima al portal real y se queda con la sesión.
+    rol: atacante
+    patron: goteo
+    intentos: 4
+    metodos: [iniciar_sesion_portal]
+    usuarios: [ana@example.com]
+    ips: { tipo: fija, valor: 203.0.113.70 }
+    via_vpn: false
+    segundo_factor: false
+    identidad: { vector: aitm }
+
+# Se evalúa en orden: la primera regla que coincide decide el resultado.
+evaluacion:
+  - si: { rol: atacante, vector: relleno, mfa_activo: true }
+    resultado: bloqueado
+    explicacion: relleno_mfa
+  - si: { rol: atacante, vector: relleno, contrasena_fuerte: true }
+    resultado: bloqueado
+    explicacion: relleno_contrasena_filtrada
+  - si: { rol: atacante, vector: relleno, bloqueo: true }
+    resultado: detectado
+    explicacion: relleno_alerta_bloqueo
+  - si: { rol: atacante, vector: relleno }
+    resultado: no_detectado
+    explicacion: relleno_sin_proteccion
+  - si: { rol: atacante, vector: fatiga, mfa_fatiga_resistente: true }
+    resultado: bloqueado
+    explicacion: fatiga_bloqueada
+  - si: { rol: atacante, vector: fatiga }
+    resultado: no_detectado
+    explicacion: fatiga_sin_proteccion
+  - si: { rol: atacante, vector: aitm, mfa_resistente_phishing: true }
+    resultado: bloqueado
+    explicacion: aitm_bloqueado
+  - si: { rol: atacante, vector: aitm }
+    resultado: no_detectado
+    explicacion: aitm_sin_resistencia
+  - si: { rol: atacante }
+    resultado: no_detectado
+    explicacion: ataque_no_cubierto
+  # Once the account locks, even the employee's correct password is refused: that is the cost.
+  - si: { rol: legitimo, vector: tipeo, bloqueo: true }
+    resultado: bloqueado
+    explicacion: tipeo_bloqueado
+  - si: {}
+    resultado: permitido
+    explicacion: inicio_legitimo
+
+explicaciones:
+  relleno_mfa:
+    titulo: Contraseña filtrada inútil sin el segundo factor
+    texto: "La botnet probó pares de usuario y contraseña filtrados, pero le faltó el segundo factor. El inicio de sesión se rechazó aunque la contraseña fuera correcta."
+    practica: "Un segundo factor convierte una contraseña robada en una credencial incompleta. Activa MFA para todas las cuentas del portal."
+    fuente: "NIST SP 800-63B (Digital Identity Guidelines: Authentication); OWASP Authentication Cheat Sheet"
+  relleno_contrasena_filtrada:
+    titulo: Contraseña filtrada rechazada por la política
+    texto: "La contraseña que probó la botnet aparece en listas de filtraciones conocidas, así que el portal la rechazó antes de dejar entrar a nadie."
+    practica: "Compara las contraseñas nuevas y cambiadas con listas de filtraciones y exige un largo mínimo de al menos 8 caracteres, sin obligar a cambios periódicos."
+    fuente: "NIST SP 800-63B (Memorized Secret Verifiers); OWASP Authentication Cheat Sheet"
+  relleno_alerta_bloqueo:
+    titulo: Botnet detectada, pero no frenada
+    texto: "La botnet entró en muchas cuentas con contraseñas filtradas. Como el bloqueo estaba activo, el equipo recibió alertas, pero no había un segundo factor que impidiera el acceso."
+    practica: "Las alertas por fallos repetidos sirven para responder, pero no reemplazan al segundo factor ni a una contraseña que no esté filtrada."
+    fuente: "OWASP Authentication Cheat Sheet; NIST SP 800-63B (Throttling)"
+  relleno_sin_proteccion:
+    titulo: Cuentas entradas con contraseñas filtradas
+    texto: "Sin segundo factor, sin control de filtraciones y sin alertas, la botnet entró en varias cuentas y nadie lo notó."
+    practica: "Sin MFA ni listas de contraseñas filtradas, una sola filtración de otro sitio basta para entrar al portal."
+    fuente: "NIST SP 800-63B (Digital Identity Guidelines: Authentication); OWASP Authentication Cheat Sheet"
+  fatiga_bloqueada:
+    titulo: Spam de notificaciones frenado
+    texto: "Quien tenía la contraseña no pudo aprobar sus notificaciones: el segundo factor exige un código o un número que solo tiene el empleado."
+    practica: "Usa push con coincidencia de número o un factor como TOTP, SMS o FIDO2. Un push que solo pide aprobar se puede aprobar por cansancio."
+    fuente: "CISA: Implementing Phishing-Resistant MFA (fact sheet); OWASP Multifactor Authentication Cheat Sheet"
+  fatiga_sin_proteccion:
+    titulo: Notificaciones aprobadas por cansancio
+    texto: "El atacante envió notificaciones una y otra vez, hasta que alguien las aprobó sin mirar. Con push sin número, la aprobación bastó para entrar sin que nadie lo notara."
+    practica: "Push sin coincidencia de número cae en la fatiga. Muestra el número de la sesión en la pantalla de inicio y limita las solicitudes por usuario."
+    fuente: "CISA: Implementing Phishing-Resistant MFA (fact sheet); NIST SP 800-63B (Out-of-Band Verifiers)"
+  aitm_bloqueado:
+    titulo: Proxy de phishing frenado por la llave de seguridad
+    texto: "La página falsa reenvió la contraseña y el código, pero la llave FIDO2 se ligó al sitio real y no firmó la sesión para el dominio falso."
+    practica: "FIDO2 y las passkeys son resistentes al phishing porque el origen forma parte de la firma. Es la única opción de esta lista que frena un proxy en tiempo real."
+    fuente: "CISA: Implementing Phishing-Resistant MFA (fact sheet); NIST SP 800-63B (Authenticator Assurance Levels)"
+  aitm_sin_resistencia:
+    titulo: Sesión robada por un proxy de phishing
+    texto: "La víctima introdujo la contraseña y el código en la página falsa. El proxy los reenvió al portal real y el atacante quedó con la sesión sin que la cooperativa lo notara."
+    practica: "Un código SMS, una notificación o un TOTP se pueden retransmitir. Solo los factores resistentes al phishing, como FIDO2, frenan este ataque."
+    fuente: "CISA: Implementing Phishing-Resistant MFA (fact sheet); OWASP Authentication Cheat Sheet"
+  ataque_no_cubierto:
+    titulo: Ataque no cubierto por la configuración
+    texto: "Ninguna de las defensas configuradas frenó este intento."
+    practica: "Revisa cada tipo de ataque contra la configuración de acceso antes de publicar el portal."
+    fuente: "OWASP Authentication Cheat Sheet"
+  tipeo_bloqueado:
+    titulo: Error de tipeo que cerró la cuenta
+    texto: "El empleado escribió mal la contraseña varias veces. Con el bloqueo activo, la cuenta se cerró temporalmente y el empleado tuvo que esperar o pedir ayuda."
+    practica: "El bloqueo castiga a quien se equivoca al tipear. Un segundo factor y una contraseña larga frenan a los atacantes sin cerrar la cuenta a los empleados."
+    fuente: "NIST SP 800-63B (Throttling); OWASP Authentication Cheat Sheet"
+  inicio_legitimo:
+    titulo: Inicio de sesión legítimo
+    texto: "El empleado entró al portal con normalidad: la configuración permite lo que necesita para trabajar."
+    practica: "Una buena configuración de acceso deja pasar a los empleados sin fricción innecesaria. Prueba cada cambio con el inicio de sesión de todo el equipo."
+    fuente: "NIST SP 800-63B (Digital Identity Guidelines: Authentication)"
+
+pesos:
+  seguridad: 0.5
+  operatividad: 0.35
+  costo: 0.15
+
+# Configuración recomendada: llave FIDO2, contraseña larga y filtrada, y sin bloqueo de cuenta.
+optimo:
+  mfa: fido2
+  contrasenas: larga_y_filtradas
+  bloqueo: false

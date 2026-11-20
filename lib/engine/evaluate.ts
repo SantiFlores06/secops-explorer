@@ -1,5 +1,6 @@
 import { mailFacts } from "./mail";
 import { webFacts } from "./web";
+import { identityFacts } from "./identity";
 import type {
   Actor,
   Attempt,
@@ -91,6 +92,7 @@ function buildFacts(
   const bannedUntil = state.bannedUntil.get(attempt.ip);
   const mail = actor.mail ? mailFacts(scenario, config, actor.mail) : {};
   const web = actor.web ? webFacts(config, actor.web) : {};
+  const identity = actor.identity ? identityFacts(config, actor.identity) : {};
   return {
     ...config,
     accion: action,
@@ -105,6 +107,7 @@ function buildFacts(
     ip_baneada: bannedUntil !== undefined && bannedUntil > attempt.t,
     ...mail,
     ...web,
+    ...identity,
   };
 }
 

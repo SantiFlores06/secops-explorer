@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const SCENARIOS = ["ssh-expuesto", "dmarc-suplantacion", "tienda-sin-headers"] as const;
+const SCENARIOS = ["ssh-expuesto", "dmarc-suplantacion", "tienda-sin-headers", "portal-mfa"] as const;
 // Pills prefix the label with sr-only meaning text ("Meaning: Label"), so match the suffix.
 const OUTCOME_PILL = /(Permitido|Bloqueado|Detectado|No detectado)$/;
 

@@ -9,7 +9,12 @@
 export type Outcome = "permitido" | "bloqueado" | "detectado" | "no_detectado";
 export type Role = "legitimo" | "atacante";
 /** What an actor tries: log in (SSH scenario), send a message (DMARC) or load a web page (web). */
-export type AuthAction = "login_clave" | "login_password" | "enviar_correo" | "visitar_web";
+export type AuthAction =
+  | "login_clave"
+  | "login_password"
+  | "enviar_correo"
+  | "visitar_web"
+  | "iniciar_sesion_portal";
 export type Credential = "valida" | "invalida";
 
 export type ControlValue = boolean | number | string;
@@ -86,6 +91,12 @@ export interface WebProfile {
   vector: "navegacion" | "chat_proveedor" | "xss" | "mitm" | "clickjacking";
 }
 
+/** How a login attempt reaches the portal. Values come from scenario data (Spanish keys, English vectors). */
+export interface IdentityProfile {
+  /** "inicio": a normal login. "tipeo": a typo. "relleno": leaked passwords. "fatiga": push spam. "aitm": a phishing proxy. */
+  vector: "inicio" | "tipeo" | "relleno" | "fatiga" | "aitm";
+}
+
 export interface Actor {
   id: string;
   name: string;
@@ -103,6 +114,8 @@ export interface Actor {
   mail?: MailProfile;
   /** Present only for actors that browse the shop. */
   web?: WebProfile;
+  /** Present only for actors that log in to the portal. */
+  identity?: IdentityProfile;
 }
 
 export type FactValue = boolean | number | string;

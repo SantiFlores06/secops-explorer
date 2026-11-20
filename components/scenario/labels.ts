@@ -12,6 +12,7 @@ export const ACTION_LABEL: Record<AuthAction, string> = {
   login_password: "contraseña",
   enviar_correo: "correo",
   visitar_web: "visita web",
+  iniciar_sesion_portal: "inicio de sesión web",
 };
 
 /** Human name for a scenario track id; unknown ids fall back to the id itself. */
@@ -19,6 +20,7 @@ const TRACK_LABEL: Record<string, string> = {
   hardening: "Hardening",
   correo: "Correo",
   "web-appsec": "Web y AppSec",
+  identidad: "Identidad y acceso",
 };
 
 export function trackLabel(track: string): string {

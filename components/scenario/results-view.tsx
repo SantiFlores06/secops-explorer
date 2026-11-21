@@ -294,9 +294,19 @@ function describeWebRow(row: TimelineRow): string {
   return `${row.count} peticiones ${received ? "cargadas" : "bloqueadas"} ${origin}.`;
 }
 
+function describeBucketRow(row: TimelineRow): string {
+  const served = row.outcome !== "bloqueado";
+  const verb = served ? "atendida" : "bloqueada";
+  if (row.count === 1) return `Solicitud al bucket ${verb} desde ${row.ip}.`;
+  const origin =
+    row.ipCount === 1 ? `desde ${row.ip}` : `desde ${row.ipCount} direcciones distintas`;
+  return `${row.count} solicitudes al bucket ${served ? "atendidas" : "bloqueadas"} ${origin}.`;
+}
+
 function describeRow(row: TimelineRow): string {
   if (row.action === "enviar_correo") return describeMailRow(row);
   if (row.action === "visitar_web") return describeWebRow(row);
+  if (row.action === "acceder_bucket") return describeBucketRow(row);
   const method = ACTION_LABEL[row.action];
   const entered = row.outcome !== "bloqueado";
   let text: string;

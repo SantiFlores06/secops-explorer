@@ -3,6 +3,7 @@ import { isDocumentationIp, isDocumentationRange } from "./ips";
 import { MAIL_FACTS } from "./mail";
 import { WEB_FACTS } from "./web";
 import { IDENTITY_FACTS } from "./identity";
+import { STORAGE_FACTS } from "./storage";
 import type {
   Actor,
   Behavior,
@@ -15,6 +16,7 @@ import type {
   Scenario,
   WebProfile,
   IdentityProfile,
+  StorageProfile,
 } from "./types";
 
 /**
@@ -50,6 +52,7 @@ const authAction = z.enum([
   "enviar_correo",
   "visitar_web",
   "iniciar_sesion_portal",
+  "acceder_bucket",
 ]);
 const integerPair = z
   .tuple([z.number().int().min(0), z.number().int().min(0)])
@@ -123,6 +126,10 @@ const identityProfile = z.strictObject({
   vector: z.enum(["inicio", "tipeo", "relleno", "fatiga", "aitm"]),
 });
 
+const storageProfile = z.strictObject({
+  vector: z.enum(["carga_imagen", "descarga_socio", "escaneo", "enlace_viejo"]),
+});
+
 const ips = z.discriminatedUnion("tipo", [
   z.strictObject({
     tipo: z.literal("fija"),
@@ -152,6 +159,7 @@ const actorBase = {
   correo: mailProfile.optional(),
   web: webProfile.optional(),
   identidad: identityProfile.optional(),
+  almacen: storageProfile.optional(),
 };
 
 const actor = z
@@ -292,6 +300,7 @@ const validated = rawScenario.superRefine((data, ctx) => {
     ...MAIL_FACTS,
     ...WEB_FACTS,
     ...IDENTITY_FACTS,
+    ...STORAGE_FACTS,
     ...controlIds,
   ]);
   data.evaluacion.forEach((item, index) => {
@@ -415,6 +424,10 @@ function toIdentity(raw: NonNullable<RawActor["identidad"]>): IdentityProfile {
   return { vector: raw.vector };
 }
 
+function toStorage(raw: NonNullable<RawActor["almacen"]>): StorageProfile {
+  return { vector: raw.vector };
+}
+
 function toActor(raw: RawActor): Actor {
   const ipSpec: IpSpec =
     raw.ips.tipo === "fija"
@@ -448,6 +461,7 @@ function toActor(raw: RawActor): Actor {
     ...(raw.correo ? { mail: toMail(raw.correo) } : {}),
     ...(raw.web ? { web: toWeb(raw.web) } : {}),
     ...(raw.identidad ? { identity: toIdentity(raw.identidad) } : {}),
+    ...(raw.almacen ? { storage: toStorage(raw.almacen) } : {}),
   };
 }
 

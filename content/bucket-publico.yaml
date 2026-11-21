@@ -1,0 +1,201 @@
+# Escenario: El bucket público (Configurar · Cloud)
+# Todas las direcciones IP pertenecen a rangos reservados para documentación (RFC 5737).
+# Todos los dominios son reservados para documentación y pruebas (RFC 2606).
+id: bucket-publico
+track: cloud
+tipo: configurar
+titulo: El bucket público
+resumen: "Cierra el bucket sin romper las imágenes de la tienda ni dejar sin informes al socio, y frena a los bots y a los enlaces filtrados."
+contexto: >-
+  La tienda online de una cooperativa ficticia guarda las imágenes de productos y los informes de clientes
+  en un mismo bucket de almacenamiento en la nube. Las imágenes tienen que verse en el sitio, un socio
+  descarga los informes mensuales y la carpeta de informes tiene datos de clientes. Durante una hora simulada
+  bots escanean buckets abiertos buscando carpetas con nombres útiles, y un enlace de descarga de un informe
+  circula en un foro.
+duracion_segundos: 3600
+tags:
+  attack: [T1530, T1619]
+  csf: [PR.DS, DE.CM]
+
+usuarios_existentes: [tienda-web, socio-reportes]
+usuarios_permitidos: []
+
+# Textos de la interfaz propios de este escenario. Sin este bloque se usan los de SSH.
+vocabulario:
+  panel_configuracion: Configuración del bucket
+  operatividad_ayuda: Descargas legítimas que funcionaron.
+  legitimo_resumen: "Descargó {permitidos} de {total} veces"
+  objetivo: Bucket de archivos
+
+# Sin inicio de sesión por clave: el acceso al bucket se describe con su propio método.
+metodos_aceptados: {}
+
+controles:
+  - id: acceso
+    tipo: opcion
+    etiqueta: Acceso público al bucket
+    ayuda: "público: cualquiera con la dirección de un archivo puede leerlo. privado: nadie lee el bucket directo, ni siquiera el sitio. privado detrás de una CDN: el bucket queda cerrado y una CDN con acceso al origen sirve las imágenes."
+    opciones:
+      - { valor: publico, etiqueta: "público", costo: 0 }
+      - { valor: privado, etiqueta: "privado", costo: 1 }
+      - { valor: privado_cdn, etiqueta: "privado detrás de una CDN", costo: 2 }
+    default: publico
+  - id: urls_firmadas
+    tipo: toggle
+    etiqueta: URL firmadas con vencimiento para los informes
+    ayuda: "Cada socio recibe un enlace que expira en minutos. Un enlace filtrado deja de servir cuando vence."
+    default: false
+    costo: 1
+  - id: registro
+    tipo: toggle
+    etiqueta: Registro de accesos con alertas
+    ayuda: "Guarda qué archivo se leyó, desde dónde, y avisa cuando hay descargas inusuales."
+    default: false
+    costo: 0
+
+actores:
+  - id: visitantes_tienda
+    nombre: Visitantes de la tienda
+    descripcion: Cargan las imágenes de los productos cada vez que abren una página del catálogo.
+    rol: legitimo
+    patron: goteo
+    intentos: 20
+    metodos: [acceder_bucket]
+    usuarios: [tienda-web]
+    ips: { tipo: fija, valor: 198.51.100.30 }
+    via_vpn: false
+    segundo_factor: false
+    almacen: { vector: carga_imagen }
+  - id: socio_reportes
+    nombre: Socio que descarga reportes
+    descripcion: Baja el informe mensual de ventas desde la carpeta de reportes, una vez por semana.
+    rol: legitimo
+    patron: goteo
+    intentos: 6
+    metodos: [acceder_bucket]
+    usuarios: [socio-reportes]
+    ips: { tipo: fija, valor: 198.51.100.31 }
+    via_vpn: false
+    segundo_factor: false
+    almacen: { vector: descarga_socio }
+  - id: bots_escaneo
+    nombre: Bots que escanean buckets abiertos
+    descripcion: Buscan buckets con acceso público, listan la carpeta de reportes y descargan lo que encuentran.
+    rol: atacante
+    patron: rafagas
+    intentos_por_ip: [3, 5]
+    metodos: [acceder_bucket]
+    usuarios: [anonimo]
+    ips: { tipo: variable, cantidad: 10, rangos: [192.0.2.0/24] }
+    via_vpn: true
+    segundo_factor: false
+    almacen: { vector: escaneo }
+  - id: enlace_viejo
+    nombre: Enlace viejo filtrado en un foro
+    descripcion: Reutiliza un enlace de descarga de un informe que alguien publicó en un foro.
+    rol: atacante
+    patron: goteo
+    intentos: 4
+    metodos: [acceder_bucket]
+    usuarios: [socio-reportes]
+    ips: { tipo: fija, valor: 203.0.113.80 }
+    via_vpn: false
+    segundo_factor: false
+    almacen: { vector: enlace_viejo }
+
+# Se evalúa en orden: la primera regla que coincide decide el resultado.
+evaluacion:
+  - si: { rol: atacante, vector: escaneo, acceso_publico: false }
+    resultado: bloqueado
+    explicacion: escaneo_bloqueado
+  # A mass download from an open bucket is a breach even when logged: the data is already gone.
+  - si: { rol: atacante, vector: escaneo }
+    resultado: no_detectado
+    explicacion: escaneo_sin_proteccion
+  - si: { rol: atacante, vector: enlace_viejo, urls_firmadas: true }
+    resultado: bloqueado
+    explicacion: enlace_caducado
+  - si: { rol: atacante, vector: enlace_viejo, acceso_publico: false }
+    resultado: bloqueado
+    explicacion: enlace_sin_acceso_publico
+  - si: { rol: atacante, vector: enlace_viejo, registro: true }
+    resultado: detectado
+    explicacion: enlace_detectado
+  - si: { rol: atacante, vector: enlace_viejo }
+    resultado: no_detectado
+    explicacion: enlace_sin_proteccion
+  - si: { rol: atacante }
+    resultado: no_detectado
+    explicacion: ataque_no_cubierto
+  - si: { rol: legitimo, vector: carga_imagen, acceso_privado: true }
+    resultado: bloqueado
+    explicacion: imagen_bloqueada
+  - si: { rol: legitimo, vector: descarga_socio, descarga_permitida: false }
+    resultado: bloqueado
+    explicacion: descarga_bloqueada
+  - si: {}
+    resultado: permitido
+    explicacion: acceso_legitimo
+
+explicaciones:
+  escaneo_bloqueado:
+    titulo: Bot que escaneaba frenado por el bucket cerrado
+    texto: "El bot pidió el listado y las descargas de la carpeta de reportes, pero el bucket no está abierto al público y ninguna petición directa llegó a los archivos."
+    practica: "Bloquea el acceso público del bucket a nivel de cuenta. Si la tienda necesita imágenes, sírvelas por una CDN con control de acceso al origen, no abriendo el bucket."
+    fuente: "AWS S3 documentation: Blocking public access to your Amazon S3 storage; CIS AWS Foundations Benchmark"
+  escaneo_sin_proteccion:
+    titulo: Carpeta de reportes listada y descargada sin rastro
+    texto: "El bucket estaba abierto y sin registro de accesos. El bot listó la carpeta de reportes, con datos de clientes, y nadie se enteró."
+    practica: "Un bucket público con datos de clientes es una filtración en espera. Bloquea el acceso público y activa el registro de accesos."
+    fuente: "AWS S3 documentation: Blocking public access to your Amazon S3 storage; OWASP Logging Cheat Sheet"
+  enlace_caducado:
+    titulo: Enlace filtrado caducado
+    texto: "El enlace firmado del foro ya había expirado. El bucket lo rechazó y el informe no se pudo descargar."
+    practica: "Las URL firmadas expiran en minutos u horas. Entrega cada informe al socio con un enlace de vida corta, nunca con una carpeta abierta."
+    fuente: "AWS S3 documentation: Sharing objects with presigned URLs; OWASP Authorization Cheat Sheet"
+  enlace_sin_acceso_publico:
+    titulo: Enlace filtrado sin acceso público
+    texto: "El bucket no está abierto al público. Aunque alguien tuviera la dirección de un informe, el acceso directo fue rechazado."
+    practica: "Cerrar el acceso público impide que una dirección filtrada sirva para descargar archivos desde internet."
+    fuente: "AWS S3 documentation: Blocking public access to your Amazon S3 storage; CIS AWS Foundations Benchmark"
+  enlace_detectado:
+    titulo: Enlace filtrado usado, pero detectado
+    texto: "El enlace seguía vigente y el bucket era público. El informe se descargó, pero el registro de accesos generó una alerta."
+    practica: "Con el registro activo, el equipo ve qué archivo se descargó y desde dónde. Combínalo con URL firmadas que expiren."
+    fuente: "CIS AWS Foundations Benchmark; OWASP Logging Cheat Sheet"
+  enlace_sin_proteccion:
+    titulo: Informe descargado con un enlace filtrado
+    texto: "El enlace no expiraba, el bucket era público y no había registro de accesos. Nadie notó la descarga."
+    practica: "Las URL firmadas con vencimiento limitan el daño de un enlace filtrado, y el registro de accesos muestra quién descargó qué."
+    fuente: "AWS S3 documentation: Sharing objects with presigned URLs; OWASP Logging Cheat Sheet"
+  ataque_no_cubierto:
+    titulo: Ataque no cubierto por la configuración
+    texto: "Ninguna de las defensas configuradas frenó este intento."
+    practica: "Revisa cada tipo de ataque contra la configuración del bucket antes de publicar la tienda."
+    fuente: "OWASP Top 10: A01 Broken Access Control"
+  imagen_bloqueada:
+    titulo: Imágenes de la tienda rotas por el bloqueo
+    texto: "Cerrar el bucket sin una CDN dejó sin imágenes a los visitantes: el sitio pide cada imagen directo al bucket, y ahora recibe un rechazo."
+    practica: "Cierra el bucket y sirve las imágenes por una CDN con control de acceso al origen. La tienda sigue cargando y el bucket queda privado."
+    fuente: "AWS CloudFront documentation: Restricting access to Amazon S3 content by using origin access control (OAC)"
+  descarga_bloqueada:
+    titulo: Socio sin descarga de informes
+    texto: "El socio no pudo bajar el informe mensual: el bucket está cerrado y no tiene enlaces firmados."
+    practica: "Entrega al socio URL firmadas con vencimiento corto, en lugar de abrir la carpeta de reportes al público."
+    fuente: "AWS S3 documentation: Sharing objects with presigned URLs"
+  acceso_legitimo:
+    titulo: Acceso legítimo permitido
+    texto: "La tienda cargó sus imágenes y el socio descargó sus informes con normalidad."
+    practica: "Prueba cada cambio de acceso con las imágenes de la tienda y las descargas del socio antes de publicarlo."
+    fuente: "AWS CloudFront documentation: Restricting access to Amazon S3 content by using origin access control (OAC)"
+
+pesos:
+  seguridad: 0.5
+  operatividad: 0.35
+  costo: 0.15
+
+# Configuración recomendada: bucket cerrado detrás de una CDN, URL firmadas y registro de accesos.
+optimo:
+  acceso: privado_cdn
+  urls_firmadas: true
+  registro: true

@@ -13,6 +13,7 @@ export const ACTION_LABEL: Record<AuthAction, string> = {
   enviar_correo: "correo",
   visitar_web: "visita web",
   iniciar_sesion_portal: "inicio de sesión web",
+  acceder_bucket: "acceso al bucket",
 };
 
 /** Human name for a scenario track id; unknown ids fall back to the id itself. */
@@ -21,6 +22,7 @@ const TRACK_LABEL: Record<string, string> = {
   correo: "Correo",
   "web-appsec": "Web y AppSec",
   identidad: "Identidad y acceso",
+  cloud: "Cloud",
 };
 
 export function trackLabel(track: string): string {

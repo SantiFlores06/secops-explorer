@@ -1,6 +1,7 @@
 import { mailFacts } from "./mail";
 import { webFacts } from "./web";
 import { identityFacts } from "./identity";
+import { storageFacts } from "./storage";
 import type {
   Actor,
   Attempt,
@@ -93,6 +94,7 @@ function buildFacts(
   const mail = actor.mail ? mailFacts(scenario, config, actor.mail) : {};
   const web = actor.web ? webFacts(config, actor.web) : {};
   const identity = actor.identity ? identityFacts(config, actor.identity) : {};
+  const storage = actor.storage ? storageFacts(config, actor.storage) : {};
   return {
     ...config,
     accion: action,
@@ -108,6 +110,7 @@ function buildFacts(
     ...mail,
     ...web,
     ...identity,
+    ...storage,
   };
 }
 

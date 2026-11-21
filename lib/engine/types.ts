@@ -14,7 +14,8 @@ export type AuthAction =
   | "login_password"
   | "enviar_correo"
   | "visitar_web"
-  | "iniciar_sesion_portal";
+  | "iniciar_sesion_portal"
+  | "acceder_bucket";
 export type Credential = "valida" | "invalida";
 
 export type ControlValue = boolean | number | string;
@@ -97,6 +98,12 @@ export interface IdentityProfile {
   vector: "inicio" | "tipeo" | "relleno" | "fatiga" | "aitm";
 }
 
+/** How a request reaches the storage bucket. Values come from scenario data (Spanish keys, English vectors). */
+export interface StorageProfile {
+  /** "carga_imagen": the shop loads a product image. "descarga_socio": a partner downloads a report. "escaneo": a bot scans. "enlace_viejo": a leaked link is reused. */
+  vector: "carga_imagen" | "descarga_socio" | "escaneo" | "enlace_viejo";
+}
+
 export interface Actor {
   id: string;
   name: string;
@@ -116,6 +123,8 @@ export interface Actor {
   web?: WebProfile;
   /** Present only for actors that log in to the portal. */
   identity?: IdentityProfile;
+  /** Present only for actors that use the storage bucket. */
+  storage?: StorageProfile;
 }
 
 export type FactValue = boolean | number | string;
